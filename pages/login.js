@@ -41,10 +41,11 @@ export default function Login() {
         body{font-family:'DM Sans',sans-serif;background:#F7F9FC;display:flex;align-items:center;justify-content:center;height:100vh}
       `}</style>
       <div style={{background:'#fff',border:'1px solid #E2E8F0',borderRadius:16,padding:40,width:380,boxShadow:'0 4px 24px rgba(0,0,0,0.06)'}}>
-        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:32}}>
-          <div style={{width:10,height:10,background:'#2563EB',borderRadius:'50%'}}/>
-          <span style={{fontSize:18,fontWeight:700,color:'#0F2D52'}}>RoundIT</span>
-        </div>
+       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:32}}>
+  <span style={{fontSize:22,fontWeight:700}}>
+    <span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span>
+  </span>
+</div>
         <div style={{fontSize:22,fontWeight:700,color:'#0F2D52',marginBottom:4}}>Connexion</div>
         <div style={{fontSize:13,color:'#94A3B8',marginBottom:28}}>Accédez à votre espace RoundIT</div>
         <div style={{marginBottom:16}}>
