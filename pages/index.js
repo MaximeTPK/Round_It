@@ -5,14 +5,14 @@ import * as XLSX from 'xlsx'
 
 const getSupabaseClient = () => {
   if (typeof window === 'undefined') return null
-  if (!window.__supabaseClient) {
+  if (!window.__sb) {
     const { createClient } = require('@supabase/supabase-js')
-    window.__supabaseClient = createClient(
+    window.__sb = createClient(
       'https://yqjenhpaohwunjvgmlyw.supabase.co',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxamVuaHBhb2h3dW5qdmdtbHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTM1MTYsImV4cCI6MjA4Nzk4OTUxNn0.-81H9_nbaNJitTCJmVAJxE_l3FIio3algjCJGjovUcs'
     )
   }
-  return window.__supabaseClient
+  return window.__sb
 }
 const MapView = dynamic(() => import('../components/MapView'), { ssr: false })
 
