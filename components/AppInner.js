@@ -1,22 +1,19 @@
+import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import Head from 'next/head'
+import * as XLSX from 'xlsx'
 
-const App = dynamic(() => import('../components/AppInner'), { ssr: false })
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxamVuaHBhb2h3dW5qdmdtbHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTM1MTYsImV4cCI6MjA4Nzk4OTUxNn0.-81H9_nbaNJitTCJmVAJxE_l3FIio3algjCJGjovUcs'
 
-export default function Home() {
-  return <App />
-}
-const getSupabaseClient = () => {
-  if (typeof window === 'undefined') return null
+function getClient() {
   if (!window.__sb) {
     const { createClient } = require('@supabase/supabase-js')
-    window.__sb = createClient(
-      'https://yqjenhpaohwunjvgmlyw.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxamVuaHBhb2h3dW5qdmdtbHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTM1MTYsImV4cCI6MjA4Nzk4OTUxNn0.-81H9_nbaNJitTCJmVAJxE_l3FIio3algjCJGjovUcs'
-    )
+    window.__sb = createClient('https://yqjenhpaohwunjvgmlyw.supabase.co', ANON_KEY)
   }
   return window.__sb
 }
-const MapView = dynamic(() => import('../components/MapView'), { ssr: false })
+
+const MapView = dynamic(() => import('./MapView'), { ssr: false })
 
 const COLORS = ['#2563EB', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C', '#15803D', '#C2410C']
 const DEPOT_KEY = 'roundit_depot'
@@ -58,7 +55,7 @@ const I18N = {
 const STATUS_COLORS = { todo: '#2563EB', done: '#059669', ecarte: '#D97706' }
 const STATUS_BG = { todo: '#EFF6FF', done: '#F0FDF4', ecarte: '#FFFBEB' }
 
-export default function Home() {
+export default function AppInner() {
   const [lang, setLang] = useState('fr')
   const [pickingFile, setPickingFile] = useState(null)
   const [deliveryFile, setDeliveryFile] = useState(null)
@@ -86,8 +83,9 @@ export default function Home() {
     const savedTrucks = localStorage.getItem(TRUCKS_KEY)
     if (savedDepot) setDepot(savedDepot)
     if (savedTrucks) setNumTrucks(parseInt(savedTrucks))
-    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+    getClient().auth.getSession().then(({ data: { session } }) => {
       if (session?.user) setUserEmail(session.user.email)
+      else window.location.href = '/login'
     })
   }, [])
 
@@ -95,20 +93,19 @@ export default function Home() {
   const saveTrucks = v => { setNumTrucks(v); localStorage.setItem(TRUCKS_KEY, v) }
 
   const handleLogout = async () => {
-    await supabaseClient.auth.signOut()
+    await getClient().auth.signOut()
     window.location.href = '/login'
   }
 
   const getToken = async () => {
-    const { data: { session } } = await supabaseClient.auth.getSession()
+    const { data: { session } } = await getClient().auth.getSession()
     return session?.access_token || null
   }
 
   const handleOptimize = async () => {
     if (!pickingFile && !deliveryFile) return setError(T.errorFile)
     if (!depot) return setError(T.errorDepot)
-    setLoading(true); setError(null)
-    setProgress(T.optimizing)
+    setLoading(true); setError(null); setProgress(T.optimizing)
     try {
       const token = await getToken()
       const formData = new FormData()
@@ -120,21 +117,14 @@ export default function Home() {
         selectedIds: selectedIds.length > 0 ? selectedIds : null,
       }))
       const res = await fetch('/api/optimize', {
-        method: 'POST',
-        body: formData,
+        method: 'POST', body: formData,
         headers: token ? { Authorization: 'Bearer ' + token } : {}
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setAllJobs(data.allJobs)
-      setPlan(data.plan)
-      setDepotCoords(data.depot)
-      setActiveTab('jobs')
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoading(false); setProgress('')
-    }
+      setAllJobs(data.allJobs); setPlan(data.plan); setDepotCoords(data.depot); setActiveTab('jobs')
+    } catch (e) { setError(e.message) }
+    finally { setLoading(false); setProgress('') }
   }
 
   const updateStatus = async (id, status) => {
@@ -195,7 +185,6 @@ export default function Home() {
         ::-webkit-scrollbar{width:4px}
         ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
       `}</style>
-
       <div style={{display:'flex',flexDirection:'column',height:'100vh'}}>
         <div style={{background:'var(--white)',borderBottom:'1px solid var(--border)',padding:'10px 20px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
           <div style={{display:'flex',alignItems:'center',gap:7,marginRight:4}}>
@@ -235,9 +224,7 @@ export default function Home() {
             {T.logout}
           </button>
         </div>
-
         {error && <div style={{background:'#FEF2F2',borderBottom:'1px solid #FECACA',padding:'8px 20px',fontSize:12,color:'var(--danger)'}}>⚠️ {error}</div>}
-
         <div style={{flex:1,display:'flex',overflow:'hidden'}}>
           <div style={{flex:1,position:'relative',overflow:'hidden',background:'#E8EDF5'}}>
             {allJobs.length === 0 ? (
@@ -272,7 +259,6 @@ export default function Home() {
               </div>
             )}
           </div>
-
           {allJobs.length > 0 && (
             <div style={{width:340,background:'var(--white)',borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
               <div style={{display:'flex',borderBottom:'1px solid var(--border)'}}>
