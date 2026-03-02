@@ -2,7 +2,18 @@ import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Head from 'next/head'
 import * as XLSX from 'xlsx'
-import { getSupabaseClient } from '../lib/supabase'
+
+const getSupabaseClient = () => {
+  if (typeof window === 'undefined') return null
+  if (!window.__supabaseClient) {
+    const { createClient } = require('@supabase/supabase-js')
+    window.__supabaseClient = createClient(
+      'https://yqjenhpaohwunjvgmlyw.supabase.co',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    )
+  }
+  return window.__supabaseClient
+}
 const MapView = dynamic(() => import('../components/MapView'), { ssr: false })
 
 const COLORS = ['#2563EB', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C', '#15803D', '#C2410C']
