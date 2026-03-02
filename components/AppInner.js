@@ -178,7 +178,7 @@ export default function AppInner() {
       </Head>
       <style>{`
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        :root{--bg:#F7F9FC;--white:#fff;--navy:#0F2D52;--blue:#2563EB;--blue-soft:#EFF6FF;--border:#E2E8F0;--text:#1E293B;--muted:#94A3B8;--success:#059669;--success-soft:#F0FDF4;--warning:#D97706;--warning-soft:#FFFBEB;--danger:#DC2626;--sans:'DM Sans',sans-serif}
+        :root{--bg:#F4F7F5;--white:#fff;--navy:#1B7A6B;--blue:#2ECC8F;--blue-soft:#E8F8F3;--border:#D6EAE4;--text:#1E293B;--muted:#94A3B8;--success:#059669;--success-soft:#F0FDF4;--warning:#D97706;--warning-soft:#FFFBEB;--danger:#DC2626;--sans:'DM Sans',sans-serif}
         html,body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100%;overflow:hidden}
         #__next{height:100vh;display:flex;flex-direction:column}
         input{font-family:var(--sans)}
@@ -187,10 +187,11 @@ export default function AppInner() {
       `}</style>
       <div style={{display:'flex',flexDirection:'column',height:'100vh'}}>
         <div style={{background:'var(--white)',borderBottom:'1px solid var(--border)',padding:'10px 20px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-          <div style={{display:'flex',alignItems:'center',gap:7,marginRight:4}}>
-            <div style={{width:8,height:8,background:'var(--blue)',borderRadius:'50%'}}/>
-            <span style={{fontSize:14,fontWeight:700,color:'var(--navy)'}}>RoundIT</span>
-          </div>
+         <div style={{display:'flex',alignItems:'center',gap:7,marginRight:4}}>
+  <span style={{fontSize:14,fontWeight:700}}>
+    <span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span>
+  </span>
+</div>
           <button onClick={() => setLang(l => l === 'fr' ? 'en' : 'fr')}
             style={{padding:'4px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,fontWeight:700,color:'var(--navy)',background:'var(--bg)',cursor:'pointer'}}>
             {lang === 'fr' ? '🇬🇧 EN' : '🇫🇷 FR'}
