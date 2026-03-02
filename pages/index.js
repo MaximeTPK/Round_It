@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import Head from 'next/head'
-import * as XLSX from 'xlsx'
 
+const App = dynamic(() => import('../components/AppInner'), { ssr: false })
+
+export default function Home() {
+  return <App />
+}
 const getSupabaseClient = () => {
   if (typeof window === 'undefined') return null
   if (!window.__sb) {
