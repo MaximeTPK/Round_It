@@ -13,11 +13,16 @@ export default function Login() {
   }, [])
 
   const handleLogin = async () => {
-    if (!client) return
-    setLoading(true); setError(null)
-    const { error } = await client.auth.signInWithPassword({ email, password })
-    if (error) { setError(error.message); setLoading(false) }
-    else window.location.href = '/'
+  if (!client) return
+  setLoading(true); setError(null)
+  const { data, error } = await client.auth.signInWithPassword({ email, password })
+  if (error) { setError(error.message); setLoading(false) }
+  else {
+    // Écrire le token dans un cookie lisible par le middleware
+    document.cookie = `sb-yqjenhpaohwunjvgmlyw-auth-token=${data.session.access_token}; path=/; max-age=86400; SameSite=Strict`
+    window.location.href = '/'
+  }
+}
   }
 
   return (
