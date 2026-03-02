@@ -1,6 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Head from 'next/head'
-import { getSupabaseClient } from '../lib/supabase'
 
 export default function Register() {
   const [email, setEmail] = useState('')
@@ -9,12 +8,18 @@ export default function Register() {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [client, setClient] = useState(null)
+
+  useEffect(() => {
+    import('../lib/supabase').then(m => setClient(m.getSupabaseClient()))
+  }, [])
 
   const handleRegister = async () => {
+    if (!client) return
     if (password !== confirm) return setError('Les mots de passe ne correspondent pas')
     if (password.length < 6) return setError('Mot de passe trop court (6 caractères minimum)')
     setLoading(true); setError(null)
-    const { error } = await getSupabaseClient().auth.signUp({ email, password })
+    const { error } = await client.auth.signUp({ email, password })
     if (error) { setError(error.message); setLoading(false) }
     else setSuccess(true)
   }
