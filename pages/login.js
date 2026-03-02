@@ -43,7 +43,7 @@ export default function Login() {
       <div style={{background:'#fff',border:'1px solid #E2E8F0',borderRadius:16,padding:40,width:380,boxShadow:'0 4px 24px rgba(0,0,0,0.06)'}}>
        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:32}}>
   <span style={{fontSize:22,fontWeight:700}}>
-    <span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#1B7A6B'}}>it</span>
+    <span style={{color:'#2ECC8F'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span>
   </span>
 </div>
         <div style={{fontSize:22,fontWeight:700,color:'#0F2D52',marginBottom:4}}>Connexion</div>
@@ -68,7 +68,7 @@ export default function Login() {
         </button>
         <div style={{textAlign:'center',marginTop:20,fontSize:13,color:'#94A3B8'}}>
           Pas encore de compte ?{' '}
-          <a href="/register" style={{color:'#2563EB',fontWeight:600,textDecoration:'none'}}>S'inscrire</a>
+          <a href="/register" style={{color:'#2ECC8F',fontWeight:600,textDecoration:'none'}}>S'inscrire</a>
         </div>
       </div>
     </>
