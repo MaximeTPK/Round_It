@@ -49,7 +49,7 @@ export default function Login() {
         <div style={{fontSize:22,fontWeight:700,color:'#0F2D52',marginBottom:4}}>Connexion</div>
         <div style={{fontSize:13,color:'#94A3B8',marginBottom:28}}>Accédez à votre espace RoundIT</div>
         <div style={{marginBottom:16}}>
-          <label style={{fontSize:12,fontWeight:600,color:'#1E293B',display:'block',marginBottom:6}}>Email</label>
+          <span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span>
           <input type="email" value={email} onChange={e => setEmail(e.target.value)}
             placeholder="vous@example.com"
             style={{width:'100%',padding:'10px 14px',border:'1px solid #E2E8F0',borderRadius:8,fontSize:14,outline:'none'}}/>
