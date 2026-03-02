@@ -80,7 +80,7 @@ export default async function handler(req, res) {
     const jobsToOptimize = jobs.filter(j => {
       if (j.status !== 'todo') return false
       if (!j.lat || !j.lon) return false
-      if (selectedIds && selectedIds.length > 0) return selectedIds.includes(j.order_id)
+      if (selectedIds && selectedIds.length > 0) return selectedIds.includes(j.id)
       return true
     })
 
