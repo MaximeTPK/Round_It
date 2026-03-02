@@ -1,16 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Head from 'next/head'
-import { getSupabaseClient } from '../lib/supabase'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [client, setClient] = useState(null)
+
+  useEffect(() => {
+    import('../lib/supabase').then(m => setClient(m.getSupabaseClient()))
+  }, [])
 
   const handleLogin = async () => {
+    if (!client) return
     setLoading(true); setError(null)
-    const { error } = await getSupabaseClient().auth.signInWithPassword({ email, password })
+    const { error } = await client.auth.signInWithPassword({ email, password })
     if (error) { setError(error.message); setLoading(false) }
     else window.location.href = '/'
   }
@@ -46,7 +51,7 @@ export default function Login() {
             style={{width:'100%',padding:'10px 14px',border:'1px solid '+(error?'#DC2626':'#E2E8F0'),borderRadius:8,fontSize:14,outline:'none'}}/>
         </div>
         {error && <div style={{fontSize:12,color:'#DC2626',marginBottom:12}}>⚠️ {error}</div>}
-        <button onClick={handleLogin} disabled={loading || !email || !password}
+        <button onClick={handleLogin} disabled={loading || !email || !password || !client}
           style={{width:'100%',padding:'11px',background:loading||!email||!password?'#E2E8F0':'#0F2D52',color:loading||!email||!password?'#94A3B8':'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:600,cursor:'pointer',marginTop:12}}>
           {loading ? 'Connexion...' : 'Se connecter →'}
         </button>
