@@ -103,20 +103,20 @@ export default function Home() {
     }
   }
 
- const updateStatus = async (id, status) => {
-    console.log('updateStatus called', { id, status, type: typeof id })
-    console.log('allJobs ids', allJobs.map(j => ({ id: j.id, type: typeof j.id, match: j.id === id })))
-    setAllJobs(prev => prev.map(j => j.id === id ? { ...j, status } : j))
-    await fetch('/api/jobs', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status }),
-    })
-  }
+const updateStatus = async (id, status) => {
+  if (!id) return  // garde-fou
+  setAllJobs(prev => prev.map(j => j.id === id ? { ...j, status } : j))
+  await fetch('/api/jobs', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, status }),
+  })
+}
 
   const toggleSelect = (id) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  }
+  if (!id) return  // garde-fou
+  setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+}
 
   const selectAll = () => setSelectedIds(allJobs.filter(j => j.status === 'todo').map(j => j.id))
 
