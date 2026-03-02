@@ -2,8 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Head from 'next/head'
 import * as XLSX from 'xlsx'
-import { supabaseClient } from '../lib/supabase'
-
+import { getSupabaseClient } from '../lib/supabase'
 const MapView = dynamic(() => import('../components/MapView'), { ssr: false })
 
 const COLORS = ['#2563EB', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C', '#15803D', '#C2410C']
