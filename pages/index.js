@@ -103,7 +103,9 @@ export default function Home() {
     }
   }
 
-  const updateStatus = async (id, status) => {
+ const updateStatus = async (id, status) => {
+    console.log('updateStatus called', { id, status, type: typeof id })
+    console.log('allJobs ids', allJobs.map(j => ({ id: j.id, type: typeof j.id, match: j.id === id })))
     setAllJobs(prev => prev.map(j => j.id === id ? { ...j, status } : j))
     await fetch('/api/jobs', {
       method: 'PATCH',
