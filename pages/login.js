@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Head from 'next/head'
-import { supabaseClient } from '../lib/supabase'
+import { getSupabaseClient } from '../lib/supabase'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -10,7 +10,7 @@ export default function Login() {
 
   const handleLogin = async () => {
     setLoading(true); setError(null)
-    const { error } = await supabaseClient.auth.signInWithPassword({ email, password })
+    const { error } = await getSupabaseClient().auth.signInWithPassword({ email, password })
     if (error) { setError(error.message); setLoading(false) }
     else window.location.href = '/'
   }
@@ -32,14 +32,12 @@ export default function Login() {
         </div>
         <div style={{fontSize:22,fontWeight:700,color:'#0F2D52',marginBottom:4}}>Connexion</div>
         <div style={{fontSize:13,color:'#94A3B8',marginBottom:28}}>Accédez à votre espace RoundIT</div>
-
         <div style={{marginBottom:16}}>
           <label style={{fontSize:12,fontWeight:600,color:'#1E293B',display:'block',marginBottom:6}}>Email</label>
           <input type="email" value={email} onChange={e => setEmail(e.target.value)}
             placeholder="vous@example.com"
             style={{width:'100%',padding:'10px 14px',border:'1px solid #E2E8F0',borderRadius:8,fontSize:14,outline:'none'}}/>
         </div>
-
         <div style={{marginBottom:8}}>
           <label style={{fontSize:12,fontWeight:600,color:'#1E293B',display:'block',marginBottom:6}}>Mot de passe</label>
           <input type="password" value={password} onChange={e => setPassword(e.target.value)}
@@ -47,14 +45,11 @@ export default function Login() {
             placeholder="••••••••"
             style={{width:'100%',padding:'10px 14px',border:'1px solid '+(error?'#DC2626':'#E2E8F0'),borderRadius:8,fontSize:14,outline:'none'}}/>
         </div>
-
         {error && <div style={{fontSize:12,color:'#DC2626',marginBottom:12}}>⚠️ {error}</div>}
-
         <button onClick={handleLogin} disabled={loading || !email || !password}
           style={{width:'100%',padding:'11px',background:loading||!email||!password?'#E2E8F0':'#0F2D52',color:loading||!email||!password?'#94A3B8':'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:600,cursor:'pointer',marginTop:12}}>
           {loading ? 'Connexion...' : 'Se connecter →'}
         </button>
-
         <div style={{textAlign:'center',marginTop:20,fontSize:13,color:'#94A3B8'}}>
           Pas encore de compte ?{' '}
           <a href="/register" style={{color:'#2563EB',fontWeight:600,textDecoration:'none'}}>S'inscrire</a>
