@@ -7,38 +7,33 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
   const mapRef = useRef(null)
   const instanceRef = useRef(null)
   const layersRef = useRef([])
-  const onStatusChangeRef = useRef(onStatusChange)
-  const onSelectRef = useRef(onSelect)
-
-  useEffect(() => { onStatusChangeRef.current = onStatusChange }, [onStatusChange])
-  useEffect(() => { onSelectRef.current = onSelect }, [onSelect])
+  const handlersRef = useRef({ status: null, select: null })
 
   const t = lang === 'en'
     ? { done: 'Done', ecarte: 'Skipped', select: '+ Select', depot: 'Depot' }
     : { done: 'Fait', ecarte: 'Écarté', select: '+ Sélect.', depot: 'Dépôt' }
 
   useEffect(() => {
-    if (typeof window === 'undefined' || instanceRef.current) return
+    if (typeof window === 'undefined') return
     const L = require('leaflet')
-    instanceRef.current = L.map(mapRef.current, { center: [48.8566, 2.3522], zoom: 12 })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap', maxZoom: 19,
-    }).addTo(instanceRef.current)
 
-    window.addEventListener('roundit:status', (e) => {
-      onStatusChangeRef.current(e.detail.id, e.detail.status)
-      instanceRef.current?.closePopup()
-    })
-    window.addEventListener('roundit:select', (e) => {
-      onSelectRef.current(e.detail.id)
-      instanceRef.current?.closePopup()
-    })
-  }, [])
+    if (!instanceRef.current) {
+      instanceRef.current = L.map(mapRef.current, { center: [48.8566, 2.3522], zoom: 12 })
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap', maxZoom: 19,
+      }).addTo(instanceRef.current)
+    }
 
-  useEffect(() => {
-    if (!instanceRef.current) return
-    const L = require('leaflet')
     const map = instanceRef.current
+
+    if (handlersRef.current.status) window.removeEventListener('roundit:status', handlersRef.current.status)
+    if (handlersRef.current.select) window.removeEventListener('roundit:select', handlersRef.current.select)
+
+    handlersRef.current.status = (e) => { onStatusChange(e.detail.id, e.detail.status); map.closePopup() }
+    handlersRef.current.select = (e) => { onSelect(e.detail.id); map.closePopup() }
+
+    window.addEventListener('roundit:status', handlersRef.current.status)
+    window.addEventListener('roundit:select', handlersRef.current.select)
 
     layersRef.current.forEach(l => map.removeLayer(l))
     layersRef.current = []
@@ -53,8 +48,7 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
         pts.push([depot.lat, depot.lon])
         if (pts.length > 2) {
           const line = L.polyline(pts, { color, weight: 2.5, opacity, dashArray: '7 4' })
-          line.addTo(map)
-          layersRef.current.push(line)
+          line.addTo(map); layersRef.current.push(line)
         }
       })
     }
@@ -65,9 +59,7 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
         className: '', iconSize: [14, 14], iconAnchor: [7, 7],
       })
       const m = L.marker([depot.lat, depot.lon], { icon }).bindPopup('<b>' + t.depot + '</b><br/>' + (depot.address || ''))
-      m.addTo(map)
-      layersRef.current.push(m)
-      bounds.push([depot.lat, depot.lon])
+      m.addTo(map); layersRef.current.push(m); bounds.push([depot.lat, depot.lon])
     }
 
     jobs.forEach(job => {
@@ -76,13 +68,10 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
       const isSelected = selectedIds.includes(job.id)
       const color = isSelected ? '#0F2D52' : (STATUS_COLORS[job.status] || '#2563EB')
       const opacity = job.status === 'done' ? 0.5 : 1
-      const ring = isSelected
-        ? 'box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 2px 6px rgba(0,0,0,0.15);'
-        : 'box-shadow:0 2px 6px rgba(0,0,0,0.15);'
-      const label = job.type === 'picking' ? 'P' : 'D'
+      const ring = isSelected ? 'box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 2px 6px rgba(0,0,0,0.15);' : 'box-shadow:0 2px 6px rgba(0,0,0,0.15);'
 
       const icon = L.divIcon({
-        html: '<div style="width:26px;height:26px;background:' + color + ';border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;' + ring + 'opacity:' + opacity + ';border:2px solid rgba(255,255,255,0.8)">' + label + '</div>',
+        html: '<div style="width:26px;height:26px;background:' + color + ';border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;' + ring + 'opacity:' + opacity + ';border:2px solid rgba(255,255,255,0.8)">' + (job.type === 'picking' ? 'P' : 'D') + '</div>',
         className: '', iconSize: [26, 26], iconAnchor: [13, 13],
       })
 
@@ -98,13 +87,17 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
         '</div></div>'
 
       const mk = L.marker([job.lat, job.lon], { icon }).bindPopup(popupHtml)
-      mk.addTo(map)
-      layersRef.current.push(mk)
+      mk.addTo(map); layersRef.current.push(mk)
     })
 
     if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40] })
     else if (depot) map.setView([depot.lat, depot.lon], 12)
-  }, [jobs, routes, depot, highlightTruck, selectedIds, lang])
+
+    return () => {
+      if (handlersRef.current.status) window.removeEventListener('roundit:status', handlersRef.current.status)
+      if (handlersRef.current.select) window.removeEventListener('roundit:select', handlersRef.current.select)
+    }
+  }, [jobs, routes, depot, highlightTruck, selectedIds, lang, onStatusChange, onSelect])
 
   return <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
 }
