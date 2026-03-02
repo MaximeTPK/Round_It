@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
 import Head from 'next/head'
+import { useRouter } from 'next/router'
+
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxamVuaHBhb2h3dW5qdmdtbHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTM1MTYsImV4cCI6MjA4Nzk4OTUxNn0.-81H9_nbaNJitTCJmVAJxE_l3FIio3algjCJGjovUcs'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -7,22 +10,24 @@ export default function Login() {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const [client, setClient] = useState(null)
+  const router = useRouter()
 
   useEffect(() => {
     const { createClient } = require('@supabase/supabase-js')
-    if (!window.__sb) window.__sb = createClient(
-  'https://yqjenhpaohwunjvgmlyw.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxamVuaHBhb2h3dW5qdmdtbHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTM1MTYsImV4cCI6MjA4Nzk4OTUxNn0.-81H9_nbaNJitTCJmVAJxE_l3FIio3algjCJGjovUcs'
-)
+    if (!window.__sb) window.__sb = createClient('https://yqjenhpaohwunjvgmlyw.supabase.co', ANON_KEY)
     setClient(window.__sb)
+    // Si déjà connecté → redirect
+    window.__sb.auth.getSession().then(({ data: { session } }) => {
+      if (session) router.replace('/')
+    })
   }, [])
 
   const handleLogin = async () => {
     if (!client) return
     setLoading(true); setError(null)
-    const { error } = await client.auth.signInWithPassword({ email, password })
+    const { data, error } = await client.auth.signInWithPassword({ email, password })
     if (error) { setError(error.message); setLoading(false) }
-    else window.location.href = '/'
+    else router.replace('/')
   }
 
   return (
