@@ -43,7 +43,7 @@ export default function Login() {
       <div style={{background:'#fff',border:'1px solid #E2E8F0',borderRadius:16,padding:40,width:380,boxShadow:'0 4px 24px rgba(0,0,0,0.06)'}}>
        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:32}}>
   <span style={{fontSize:22,fontWeight:700}}>
-    <span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span>
+    <span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#1B7A6B'}}>it</span>
   </span>
 </div>
         <div style={{fontSize:22,fontWeight:700,color:'#0F2D52',marginBottom:4}}>Connexion</div>
@@ -59,7 +59,7 @@ export default function Login() {
           <input type="password" value={password} onChange={e => setPassword(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleLogin()}
             placeholder="••••••••"
-            style={{width:'100%',padding:'10px 14px',border:'1px solid '+(error?'#DC2626':'#E2E8F0'),borderRadius:8,fontSize:14,outline:'none'}}/>
+            style={{width:'100%',padding:'10px 14px',border:'1px solid '+(error?'#DC2626':'#1B7A6B'),borderRadius:8,fontSize:14,outline:'none'}}/>
         </div>
         {error && <div style={{fontSize:12,color:'#DC2626',marginBottom:12}}>⚠️ {error}</div>}
         <button onClick={handleLogin} disabled={loading || !email || !password || !client}
