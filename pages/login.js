@@ -9,20 +9,17 @@ export default function Login() {
   const [client, setClient] = useState(null)
 
   useEffect(() => {
-    import('../lib/supabase').then(m => setClient(m.getSupabaseClient()))
+    const { createClient } = require('@supabase/supabase-js')
+    if (!window.__sb) window.__sb = createClient('https://yqjenhpaohwunjvgmlyw.supabase.co', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '')
+    setClient(window.__sb)
   }, [])
 
   const handleLogin = async () => {
-  if (!client) return
-  setLoading(true); setError(null)
-  const { data, error } = await client.auth.signInWithPassword({ email, password })
-  if (error) { setError(error.message); setLoading(false) }
-  else {
-    // Écrire le token dans un cookie lisible par le middleware
-    document.cookie = `sb-yqjenhpaohwunjvgmlyw-auth-token=${data.session.access_token}; path=/; max-age=86400; SameSite=Strict`
-    window.location.href = '/'
-  }
-}
+    if (!client) return
+    setLoading(true); setError(null)
+    const { error } = await client.auth.signInWithPassword({ email, password })
+    if (error) { setError(error.message); setLoading(false) }
+    else window.location.href = '/'
   }
 
   return (
