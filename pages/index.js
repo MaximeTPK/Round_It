@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Head from 'next/head'
 import * as XLSX from 'xlsx'
+import { supabaseClient } from '../lib/supabase'
 
 const MapView = dynamic(() => import('../components/MapView'), { ssr: false })
 
@@ -23,6 +24,7 @@ const I18N = {
     optimizeBtn: 'Optimiser', launchOptim: "Lance l'optimisation pour voir le planning",
     day: 'Jour', stops: 'stops', truck: 'Camion', km: 'km', return: 'retour', selected: 'Sélectionné',
     errorFile: 'Chargez au moins un fichier', errorDepot: "Saisissez l'adresse du dépôt",
+    logout: 'Déconnexion',
   },
   en: {
     brand: 'RoundIT', pickingCsv: 'Picking CSV', deliveryCsv: 'Delivery CSV',
@@ -37,6 +39,7 @@ const I18N = {
     optimizeBtn: 'Optimize', launchOptim: 'Run optimization to see the planning',
     day: 'Day', stops: 'stops', truck: 'Truck', km: 'km', return: 'return', selected: 'Selected',
     errorFile: 'Load at least one file', errorDepot: 'Enter the depot address',
+    logout: 'Logout',
   }
 }
 
@@ -61,6 +64,7 @@ export default function Home() {
   const [selectedIds, setSelectedIds] = useState([])
   const [activeTab, setActiveTab] = useState('jobs')
   const [highlightTruck, setHighlightTruck] = useState(null)
+  const [userEmail, setUserEmail] = useState(null)
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
@@ -70,10 +74,23 @@ export default function Home() {
     const savedTrucks = localStorage.getItem(TRUCKS_KEY)
     if (savedDepot) setDepot(savedDepot)
     if (savedTrucks) setNumTrucks(parseInt(savedTrucks))
+    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) setUserEmail(session.user.email)
+    })
   }, [])
 
   const saveDepot = v => { setDepot(v); localStorage.setItem(DEPOT_KEY, v) }
   const saveTrucks = v => { setNumTrucks(v); localStorage.setItem(TRUCKS_KEY, v) }
+
+  const handleLogout = async () => {
+    await supabaseClient.auth.signOut()
+    window.location.href = '/login'
+  }
+
+  const getToken = async () => {
+    const { data: { session } } = await supabaseClient.auth.getSession()
+    return session?.access_token || null
+  }
 
   const handleOptimize = async () => {
     if (!pickingFile && !deliveryFile) return setError(T.errorFile)
@@ -81,6 +98,7 @@ export default function Home() {
     setLoading(true); setError(null)
     setProgress(T.optimizing)
     try {
+      const token = await getToken()
       const formData = new FormData()
       if (pickingFile) formData.append('picking', pickingFile)
       if (deliveryFile) formData.append('delivery', deliveryFile)
@@ -89,7 +107,11 @@ export default function Home() {
         sessionDate: new Date().toISOString().slice(0, 10),
         selectedIds: selectedIds.length > 0 ? selectedIds : null,
       }))
-      const res = await fetch('/api/optimize', { method: 'POST', body: formData })
+      const res = await fetch('/api/optimize', {
+        method: 'POST',
+        body: formData,
+        headers: token ? { Authorization: 'Bearer ' + token } : {}
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       setAllJobs(data.allJobs)
@@ -103,20 +125,21 @@ export default function Home() {
     }
   }
 
-const updateStatus = async (id, status) => {
-  if (!id) return  // garde-fou
-  setAllJobs(prev => prev.map(j => j.id === id ? { ...j, status } : j))
-  await fetch('/api/jobs', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, status }),
-  })
-}
+  const updateStatus = async (id, status) => {
+    if (!id) return
+    setAllJobs(prev => prev.map(j => j.id === id ? { ...j, status } : j))
+    const token = await getToken()
+    await fetch('/api/jobs', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      body: JSON.stringify({ id, status }),
+    })
+  }
 
   const toggleSelect = (id) => {
-  if (!id) return  // garde-fou
-  setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-}
+    if (!id) return
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
 
   const selectAll = () => setSelectedIds(allJobs.filter(j => j.status === 'todo').map(j => j.id))
 
@@ -192,6 +215,12 @@ const updateStatus = async (id, status) => {
           <button onClick={handleOptimize} disabled={loading || (!pickingFile && !deliveryFile)}
             style={{marginLeft:'auto',padding:'8px 18px',background:loading||(!pickingFile&&!deliveryFile)?'var(--border)':'var(--navy)',color:loading||(!pickingFile&&!deliveryFile)?'var(--muted)':'#fff',fontSize:13,fontWeight:600,border:'none',borderRadius:8,cursor:'pointer',whiteSpace:'nowrap'}}>
             {loading ? T.optimizing : selectedIds.length > 0 ? T.optimizeSel.replace('{n}', selectedIds.length) : T.optimizeAll}
+          </button>
+          <div style={{width:1,height:22,background:'var(--border)'}}/>
+          {userEmail && <span style={{fontSize:11,color:'var(--muted)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{userEmail}</span>}
+          <button onClick={handleLogout}
+            style={{padding:'4px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,fontWeight:600,color:'var(--danger)',background:'var(--bg)',cursor:'pointer'}}>
+            {T.logout}
           </button>
         </div>
 
