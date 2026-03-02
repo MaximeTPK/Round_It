@@ -15,7 +15,7 @@ function getClient() {
 
 const MapView = dynamic(() => import('./MapView'), { ssr: false })
 
-const COLORS = ['#2563EB', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C', '#15803D', '#C2410C']
+const COLORS = ['#2ECC8F', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C', '#15803D', '#C2410C']
 const DEPOT_KEY = 'roundit_depot'
 const TRUCKS_KEY = 'roundit_trucks'
 
@@ -52,7 +52,7 @@ const I18N = {
   }
 }
 
-const STATUS_COLORS = { todo: '#2563EB', done: '#059669', ecarte: '#D97706' }
+const STATUS_COLORS = { todo: '#2ECC8F', done: '#059669', ecarte: '#D97706' }
 const STATUS_BG = { todo: '#EFF6FF', done: '#F0FDF4', ecarte: '#FFFBEB' }
 
 export default function AppInner() {
