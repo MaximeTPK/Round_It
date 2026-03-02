@@ -90,13 +90,7 @@ const { data: savedJobs } = await supabase
       .upsert(allJobs, { onConflict: 'order_id,session_date' })
       .select()
 
-    const jobs = savedJobs || allJobs
-    const jobsToOptimize = jobs.filter(j => {
-      if (j.status !== 'todo') return false
-      if (!j.lat || !j.lon) return false
-      if (selectedIds && selectedIds.length > 0) return selectedIds.includes(j.id)
-      return true
-    })
+  
 
     const failed = jobs.filter(j => !j.lat || !j.lon)
 
