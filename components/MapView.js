@@ -4,15 +4,6 @@ const COLORS = ['#2563EB', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C'
 const STATUS_COLORS = { todo: '#2563EB', done: '#059669', ecarte: '#D97706' }
 const REGISTRY = {}
 
-if (typeof window !== 'undefined') {
-  window.__ri = (id, action, status) => {
-    const r = REGISTRY[id]
-    if (!r) return
-    if (action === 's') r.onStatus(status)
-    if (action === 'x') r.onSelect()
-  }
-}
-
 export default function MapView({ jobs, routes, depot, highlightTruck, onStatusChange, onSelect, selectedIds = [], lang = 'fr' }) {
   const mapRef = useRef(null)
   const instanceRef = useRef(null)
@@ -29,6 +20,13 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap', maxZoom: 19,
     }).addTo(instanceRef.current)
+
+    window.__ri = (id, action, status) => {
+      const r = REGISTRY[id]
+      if (!r) return
+      if (action === 's') r.onStatus(status)
+      if (action === 'x') r.onSelect()
+    }
   }, [])
 
   useEffect(() => {
@@ -36,7 +34,6 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
     const L = require('leaflet')
     const map = instanceRef.current
 
-    // Update registry with fresh callbacks
     jobs.forEach(job => {
       REGISTRY[job.id] = {
         onStatus: (s) => { onStatusChange(job.id, s); map.closePopup() },
@@ -57,7 +54,8 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
         pts.push([depot.lat, depot.lon])
         if (pts.length > 2) {
           const line = L.polyline(pts, { color, weight: 2.5, opacity, dashArray: '7 4' })
-          line.addTo(map); layersRef.current.push(line)
+          line.addTo(map)
+          layersRef.current.push(line)
         }
       })
     }
@@ -67,10 +65,9 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
         html: '<div style="width:14px;height:14px;background:white;border:3px solid #2563EB;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.2)"></div>',
         className: '', iconSize: [14, 14], iconAnchor: [7, 7],
       })
-      L.marker([depot.lat, depot.lon], { icon })
-        .bindPopup('<b>' + t.depot + '</b>')
-        .addTo(map)
-      layersRef.current.push(map._layers[Object.keys(map._layers).pop()])
+      const dm = L.marker([depot.lat, depot.lon], { icon }).bindPopup('<b>' + t.depot + '</b>')
+      dm.addTo(map)
+      layersRef.current.push(dm)
       bounds.push([depot.lat, depot.lon])
     }
 
@@ -88,12 +85,6 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
         html: '<div style="width:26px;height:26px;background:' + color + ';border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;' + ring + 'opacity:' + opacity + ';border:2px solid rgba(255,255,255,0.8)">' + (job.type === 'picking' ? 'P' : 'D') + '</div>',
         className: '', iconSize: [26, 26], iconAnchor: [13, 13],
       })
-
-      const id = job.id.replace(/-/g, '_')
-      REGISTRY[job.id] = {
-        onStatus: (s) => { onStatusChange(job.id, s); map.closePopup() },
-        onSelect: () => { onSelect(job.id); map.closePopup() },
-      }
 
       const popupHtml =
         '<div style="font-family:DM Sans,sans-serif;min-width:180px">' +
