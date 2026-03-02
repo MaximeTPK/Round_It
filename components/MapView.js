@@ -7,37 +7,39 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
   const mapRef = useRef(null)
   const instanceRef = useRef(null)
   const layersRef = useRef([])
-  const callbacksRef = useRef({})
+  const onStatusChangeRef = useRef(onStatusChange)
+  const onSelectRef = useRef(onSelect)
+
+  useEffect(() => { onStatusChangeRef.current = onStatusChange }, [onStatusChange])
+  useEffect(() => { onSelectRef.current = onSelect }, [onSelect])
 
   const t = lang === 'en'
-    ? { done: 'Done', ecarte: 'Skipped', select: '+ Select', depot: 'Depot', picking: 'P', delivery: 'D' }
-    : { done: 'Fait', ecarte: 'Écarté', select: '+ Sélect.', depot: 'Dépôt', picking: 'P', delivery: 'D' }
+    ? { done: 'Done', ecarte: 'Skipped', select: '+ Select', depot: 'Depot' }
+    : { done: 'Fait', ecarte: 'Écarté', select: '+ Sélect.', depot: 'Dépôt' }
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || instanceRef.current) return
     const L = require('leaflet')
-    if (!instanceRef.current) {
-      instanceRef.current = L.map(mapRef.current, {
-        center: depot ? [depot.lat, depot.lon] : [48.8566, 2.3522],
-        zoom: 12,
-      })
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap', maxZoom: 19,
-      }).addTo(instanceRef.current)
-    }
+    instanceRef.current = L.map(mapRef.current, { center: [48.8566, 2.3522], zoom: 12 })
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap', maxZoom: 19,
+    }).addTo(instanceRef.current)
 
-    callbacksRef.current = {}
-    jobs.forEach(job => {
-      callbacksRef.current[job.id] = {
-        status: (s) => { onStatusChange(job.id, s); instanceRef.current.closePopup() },
-        select: () => { onSelect(job.id); instanceRef.current.closePopup() },
-      }
+    window.addEventListener('roundit:status', (e) => {
+      onStatusChangeRef.current(e.detail.id, e.detail.status)
+      instanceRef.current?.closePopup()
     })
+    window.addEventListener('roundit:select', (e) => {
+      onSelectRef.current(e.detail.id)
+      instanceRef.current?.closePopup()
+    })
+  }, [])
 
-    window._ri_status = (id, status) => callbacksRef.current[id]?.status(status)
-    window._ri_select = (id) => callbacksRef.current[id]?.select()
-
+  useEffect(() => {
+    if (!instanceRef.current) return
+    const L = require('leaflet')
     const map = instanceRef.current
+
     layersRef.current.forEach(l => map.removeLayer(l))
     layersRef.current = []
     const bounds = []
@@ -74,23 +76,25 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
       const isSelected = selectedIds.includes(job.id)
       const color = isSelected ? '#0F2D52' : (STATUS_COLORS[job.status] || '#2563EB')
       const opacity = job.status === 'done' ? 0.5 : 1
-      const ring = isSelected ? 'box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 2px 6px rgba(0,0,0,0.15);' : 'box-shadow:0 2px 6px rgba(0,0,0,0.15);'
-      const label = job.type === 'picking' ? t.picking : t.delivery
-      const id = job.id
+      const ring = isSelected
+        ? 'box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 2px 6px rgba(0,0,0,0.15);'
+        : 'box-shadow:0 2px 6px rgba(0,0,0,0.15);'
+      const label = job.type === 'picking' ? 'P' : 'D'
 
       const icon = L.divIcon({
         html: '<div style="width:26px;height:26px;background:' + color + ';border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;' + ring + 'opacity:' + opacity + ';border:2px solid rgba(255,255,255,0.8)">' + label + '</div>',
         className: '', iconSize: [26, 26], iconAnchor: [13, 13],
       })
 
+      const id = JSON.stringify(job.id)
       const popupHtml =
         '<div style="font-family:DM Sans,sans-serif;min-width:180px">' +
         '<div style="font-weight:700;margin-bottom:2px;font-size:12px">' + (job.owner_name || job.address) + '</div>' +
         '<div style="font-size:10px;color:#64748B;margin-bottom:8px">' + job.address + '</div>' +
         '<div style="display:flex;gap:4px">' +
-        '<button onclick="window._ri_status(\'' + id + '\',\'done\')" style="flex:1;padding:5px 0;border-radius:5px;background:#F0FDF4;color:#059669;font-size:10px;font-weight:700;border:none;cursor:pointer">✅ ' + t.done + '</button>' +
-        '<button onclick="window._ri_status(\'' + id + '\',\'ecarte\')" style="flex:1;padding:5px 0;border-radius:5px;background:#FFFBEB;color:#D97706;font-size:10px;font-weight:700;border:none;cursor:pointer">🔶 ' + t.ecarte + '</button>' +
-        '<button onclick="window._ri_select(\'' + id + '\')" style="flex:1;padding:5px 0;border-radius:5px;background:#EFF6FF;color:#2563EB;font-size:10px;font-weight:700;border:none;cursor:pointer">' + t.select + '</button>' +
+        '<button onclick="window.dispatchEvent(new CustomEvent(\'roundit:status\',{detail:{id:' + id + ',status:\'done\'}}))" style="flex:1;padding:5px 0;border-radius:5px;background:#F0FDF4;color:#059669;font-size:10px;font-weight:700;border:none;cursor:pointer">✅ ' + t.done + '</button>' +
+        '<button onclick="window.dispatchEvent(new CustomEvent(\'roundit:status\',{detail:{id:' + id + ',status:\'ecarte\'}}))" style="flex:1;padding:5px 0;border-radius:5px;background:#FFFBEB;color:#D97706;font-size:10px;font-weight:700;border:none;cursor:pointer">🔶 ' + t.ecarte + '</button>' +
+        '<button onclick="window.dispatchEvent(new CustomEvent(\'roundit:select\',{detail:{id:' + id + '}}))" style="flex:1;padding:5px 0;border-radius:5px;background:#EFF6FF;color:#2563EB;font-size:10px;font-weight:700;border:none;cursor:pointer">' + t.select + '</button>' +
         '</div></div>'
 
       const mk = L.marker([job.lat, job.lon], { icon }).bindPopup(popupHtml)
@@ -99,6 +103,7 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
     })
 
     if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40] })
+    else if (depot) map.setView([depot.lat, depot.lon], 12)
   }, [jobs, routes, depot, highlightTruck, selectedIds, lang])
 
   return <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
