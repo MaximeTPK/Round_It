@@ -7,7 +7,10 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
   const mapRef = useRef(null)
   const instanceRef = useRef(null)
   const layersRef = useRef([])
-  const handlersRef = useRef({ status: null, select: null })
+  const onStatusChangeRef = useRef(onStatusChange)
+  const onSelectRef = useRef(onSelect)
+  onStatusChangeRef.current = onStatusChange
+  onSelectRef.current = onSelect
 
   const t = lang === 'en'
     ? { done: 'Done', ecarte: 'Skipped', select: '+ Select', depot: 'Depot' }
@@ -16,24 +19,25 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
   useEffect(() => {
     if (typeof window === 'undefined') return
     const L = require('leaflet')
+    instanceRef.current = L.map(mapRef.current, { center: [48.8566, 2.3522], zoom: 12 })
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap', maxZoom: 19,
+    }).addTo(instanceRef.current)
 
-    if (!instanceRef.current) {
-      instanceRef.current = L.map(mapRef.current, { center: [48.8566, 2.3522], zoom: 12 })
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap', maxZoom: 19,
-      }).addTo(instanceRef.current)
+    const onStatus = (e) => { onStatusChangeRef.current(e.detail.id, e.detail.status); instanceRef.current.closePopup() }
+    const onSel = (e) => { onSelectRef.current(e.detail.id); instanceRef.current.closePopup() }
+    window.addEventListener('roundit:status', onStatus)
+    window.addEventListener('roundit:select', onSel)
+    return () => {
+      window.removeEventListener('roundit:status', onStatus)
+      window.removeEventListener('roundit:select', onSel)
     }
+  }, [])
 
+  useEffect(() => {
+    if (!instanceRef.current) return
+    const L = require('leaflet')
     const map = instanceRef.current
-
-    if (handlersRef.current.status) window.removeEventListener('roundit:status', handlersRef.current.status)
-    if (handlersRef.current.select) window.removeEventListener('roundit:select', handlersRef.current.select)
-
-    handlersRef.current.status = (e) => { onStatusChange(e.detail.id, e.detail.status); map.closePopup() }
-    handlersRef.current.select = (e) => { onSelect(e.detail.id); map.closePopup() }
-
-    window.addEventListener('roundit:status', handlersRef.current.status)
-    window.addEventListener('roundit:select', handlersRef.current.select)
 
     layersRef.current.forEach(l => map.removeLayer(l))
     layersRef.current = []
@@ -68,7 +72,9 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
       const isSelected = selectedIds.includes(job.id)
       const color = isSelected ? '#0F2D52' : (STATUS_COLORS[job.status] || '#2563EB')
       const opacity = job.status === 'done' ? 0.5 : 1
-      const ring = isSelected ? 'box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 2px 6px rgba(0,0,0,0.15);' : 'box-shadow:0 2px 6px rgba(0,0,0,0.15);'
+      const ring = isSelected
+        ? 'box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 2px 6px rgba(0,0,0,0.15);'
+        : 'box-shadow:0 2px 6px rgba(0,0,0,0.15);'
 
       const icon = L.divIcon({
         html: '<div style="width:26px;height:26px;background:' + color + ';border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;' + ring + 'opacity:' + opacity + ';border:2px solid rgba(255,255,255,0.8)">' + (job.type === 'picking' ? 'P' : 'D') + '</div>',
@@ -92,12 +98,7 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
 
     if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40] })
     else if (depot) map.setView([depot.lat, depot.lon], 12)
-
-    return () => {
-      if (handlersRef.current.status) window.removeEventListener('roundit:status', handlersRef.current.status)
-      if (handlersRef.current.select) window.removeEventListener('roundit:select', handlersRef.current.select)
-    }
-  }, [jobs, routes, depot, highlightTruck, selectedIds, lang, onStatusChange, onSelect])
+  }, [jobs, routes, depot, highlightTruck, selectedIds, lang])
 
   return <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
 }
