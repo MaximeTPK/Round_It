@@ -15,23 +15,16 @@ export default function App({ Component, pageProps }) {
     if (!window.__sb) window.__sb = createClient(SUPABASE_URL, ANON_KEY)
     const client = window.__sb
 
-    // Vérification initiale
     client.auth.getSession().then(({ data: { session } }) => {
+      setReady(true)
       if (!session && !PUBLIC.includes(router.pathname)) {
-        router.replace('/login').then(() => setReady(true))
-      } else {
-        setReady(true)
+        router.replace('/login')
       }
     })
 
-    // Écoute les changements d'auth
-    const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && PUBLIC.includes(router.pathname)) {
-        router.replace('/')
-      }
-      if (event === 'SIGNED_OUT') {
-        router.replace('/login')
-      }
+    const { data: { subscription } } = client.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN') router.replace('/')
+      if (event === 'SIGNED_OUT') router.replace('/login')
     })
 
     return () => subscription.unsubscribe()
