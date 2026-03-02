@@ -54,23 +54,37 @@ export default async function handler(req, res) {
     }
     const geocoded = await geocodeAll(stopsToGeocode)
 
-    const allJobs = newStops.map(stop => {
-      const orderId = stop.orders?.[0] || stop.address
-      const existing = existingMap[orderId]
-      const geo = geocoded.find(g => g.address === stop.address)
-      return {
-        order_id: orderId,
-        owner_name: stop.owner,
-        address: stop.address,
-        type: stop.type,
-        status: existing?.status || 'todo',
-        lat: existing?.lat || geo?.lat || null,
-        lon: existing?.lon || geo?.lon || null,
-        orders: stop.orders,
-        session_date: sessionDate,
-      }
-    })
+    // Récupérer le user depuis le token
+const authHeader = req.headers.authorization
+const token = authHeader?.replace('Bearer ', '')
+let userId = null
+if (token) {
+  const { data: { user } } = await supabase.auth.getUser(token)
+  userId = user?.id || null
+}
 
+const allJobs = newStops.map(stop => {
+  const orderId = stop.orders?.[0] || stop.address
+  const existing = existingMap[orderId]
+  const geo = geocoded.find(g => g.address === stop.address)
+  return {
+    order_id: orderId,
+    owner_name: stop.owner,
+    address: stop.address,
+    type: stop.type,
+    status: existing?.status || 'todo',
+    lat: existing?.lat || geo?.lat || null,
+    lon: existing?.lon || geo?.lon || null,
+    orders: stop.orders,
+    session_date: sessionDate,
+    user_id: userId,
+  }
+})
+
+const { data: savedJobs } = await supabase
+  .from('jobs')
+  .upsert(allJobs, { onConflict: 'order_id,session_date' })
+  .select()
     const { data: savedJobs } = await supabase
       .from('jobs')
       .upsert(allJobs, { onConflict: 'order_id,session_date' })
