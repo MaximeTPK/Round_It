@@ -45,13 +45,21 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
     layersRef.current = []
     const bounds = []
 
-    if (routes && depot) {
+    // Helper : extraire lon depuis lon ou lng
+    const getLon = (obj) => obj?.lon ?? obj?.lng ?? null
+
+    const depotLon = getLon(depot)
+
+    if (routes && depot && depot.lat && depotLon) {
       routes.forEach((truck, ti) => {
         const color = COLORS[ti % COLORS.length]
         const opacity = highlightTruck == null || highlightTruck === truck.truckId ? 1 : 0.15
-        const pts = [[depot.lat, depot.lon]]
-        truck.stops.forEach(s => { if (s.lat && s.lon) pts.push([s.lat, s.lon]) })
-        pts.push([depot.lat, depot.lon])
+        const pts = [[depot.lat, depotLon]]
+        truck.stops.forEach(s => {
+          const sLon = getLon(s)
+          if (s.lat && sLon) pts.push([s.lat, sLon])
+        })
+        pts.push([depot.lat, depotLon])
         if (pts.length > 2) {
           const line = L.polyline(pts, { color, weight: 2.5, opacity, dashArray: '7 4' })
           line.addTo(map)
@@ -60,20 +68,21 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
       })
     }
 
-    if (depot) {
+    if (depot && depot.lat && depotLon) {
       const icon = L.divIcon({
         html: '<div style="width:14px;height:14px;background:white;border:3px solid #2563EB;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.2)"></div>',
         className: '', iconSize: [14, 14], iconAnchor: [7, 7],
       })
-      const dm = L.marker([depot.lat, depot.lon], { icon }).bindPopup('<b>' + t.depot + '</b>')
+      const dm = L.marker([depot.lat, depotLon], { icon }).bindPopup('<b>' + t.depot + '</b>')
       dm.addTo(map)
       layersRef.current.push(dm)
-      bounds.push([depot.lat, depot.lon])
+      bounds.push([depot.lat, depotLon])
     }
 
     jobs.forEach(job => {
-      if (!job.lat || !job.lon) return
-      bounds.push([job.lat, job.lon])
+      const jobLon = getLon(job)
+      if (!job.lat || !jobLon) return
+      bounds.push([job.lat, jobLon])
       const isSelected = selectedIds.includes(job.id)
       const color = isSelected ? '#0F2D52' : (STATUS_COLORS[job.status] || '#2563EB')
       const opacity = job.status === 'done' ? 0.5 : 1
@@ -96,13 +105,13 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
         '<button onclick="window.__ri(\'' + job.id + '\',\'x\')" style="flex:1;padding:5px 0;border-radius:5px;background:#EFF6FF;color:#2563EB;font-size:10px;font-weight:700;border:none;cursor:pointer">' + t.select + '</button>' +
         '</div></div>'
 
-      const mk = L.marker([job.lat, job.lon], { icon }).bindPopup(popupHtml)
+      const mk = L.marker([job.lat, jobLon], { icon }).bindPopup(popupHtml)
       mk.addTo(map)
       layersRef.current.push(mk)
     })
 
     if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40] })
-    else if (depot) map.setView([depot.lat, depot.lon], 12)
+    else if (depot && depot.lat && depotLon) map.setView([depot.lat, depotLon], 12)
   }, [jobs, routes, depot, highlightTruck, selectedIds, lang, onStatusChange, onSelect])
 
   return <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
