@@ -19,13 +19,16 @@ const COLORS = ['#2ECC8F', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C'
 const DEPOT_KEY = 'roundit_depot'
 const TRUCKS_KEY = 'roundit_trucks'
 
-const PRIORITY_CYCLE = { low: 'medium', medium: 'high', high: 'low' }
+const PRIORITY_ZONES = [
+  { key: 'high', icon: '▲', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+  { key: 'medium', icon: '●', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
+  { key: 'low', icon: '▼', color: '#94A3B8', bg: '#F1F5F9', border: '#CBD5E1' },
+]
+
 const PRIORITY_LABELS = {
-  fr: { high: 'Haute', medium: 'Moyenne', low: 'Basse' },
-  en: { high: 'High', medium: 'Medium', low: 'Low' },
+  fr: { high: 'Haute priorité', medium: 'Priorité normale', low: 'Basse priorité' },
+  en: { high: 'High priority', medium: 'Normal priority', low: 'Low priority' },
 }
-const PRIORITY_COLORS = { high: '#DC2626', medium: '#D97706', low: '#94A3B8' }
-const PRIORITY_BG = { high: '#FEF2F2', medium: '#FFFBEB', low: '#F1F5F9' }
 
 const I18N = {
   fr: {
@@ -42,9 +45,9 @@ const I18N = {
     day: 'Jour', stops: 'stops', truck: 'Camion', km: 'km', return: 'retour', selected: 'Sélectionné',
     errorFile: 'Chargez au moins un fichier', errorDepot: "Saisissez l'adresse du dépôt",
     logout: 'Déconnexion',
-    maxParcels: 'Max colis/camion', maxVolume: 'Max m³/camion',
+    maxParcels: 'Max colis', maxVolume: 'Max m³',
     parcels: 'colis', volume: 'm³', serviceTime: 'min',
-    capacity: 'Capacité',
+    capacity: 'Capacité', dragHint: 'Glissez les jobs entre les zones',
   },
   en: {
     brand: 'RoundIT', pickingCsv: 'Picking CSV', deliveryCsv: 'Delivery CSV',
@@ -60,9 +63,9 @@ const I18N = {
     day: 'Day', stops: 'stops', truck: 'Truck', km: 'km', return: 'return', selected: 'Selected',
     errorFile: 'Load at least one file', errorDepot: 'Enter the depot address',
     logout: 'Logout',
-    maxParcels: 'Max parcels/truck', maxVolume: 'Max m³/truck',
+    maxParcels: 'Max parcels', maxVolume: 'Max m³',
     parcels: 'parcels', volume: 'm³', serviceTime: 'min',
-    capacity: 'Capacity',
+    capacity: 'Capacity', dragHint: 'Drag jobs between zones',
   }
 }
 
@@ -90,6 +93,7 @@ export default function AppInner() {
   const [activeTab, setActiveTab] = useState('jobs')
   const [highlightTruck, setHighlightTruck] = useState(null)
   const [userEmail, setUserEmail] = useState(null)
+  const [dragOverZone, setDragOverZone] = useState(null)
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
@@ -118,12 +122,30 @@ export default function AppInner() {
     return session?.access_token || null
   }
 
-  const togglePriority = (jobId) => {
-    setAllJobs(prev => prev.map(j => {
-      if (j.id !== jobId) return j
-      const next = PRIORITY_CYCLE[j.priority || 'medium']
-      return { ...j, priority: next }
-    }))
+  // ─── Drag & drop ───
+  const handleDragStart = (e, jobId) => {
+    e.dataTransfer.setData('text/plain', jobId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e, zone) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverZone(zone)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverZone(null)
+  }
+
+  const handleDrop = (e, targetPriority) => {
+    e.preventDefault()
+    setDragOverZone(null)
+    const jobId = e.dataTransfer.getData('text/plain')
+    if (!jobId) return
+    setAllJobs(prev => prev.map(j =>
+      j.id === jobId ? { ...j, priority: targetPriority } : j
+    ))
   }
 
   const handleOptimize = async () => {
@@ -140,7 +162,6 @@ export default function AppInner() {
       if (maxParcels && parseInt(maxParcels) > 0) truckCapacity.maxParcels = parseInt(maxParcels)
       if (maxVolume && parseFloat(maxVolume) > 0) truckCapacity.maxVolumeM3 = parseFloat(maxVolume)
 
-      // Collecter les priorités définies par l'utilisateur
       const jobPriorities = {}
       allJobs.forEach(j => {
         if (j.priority && j.priority !== 'medium') {
@@ -226,6 +247,10 @@ export default function AppInner() {
         input{font-family:var(--sans)}
         ::-webkit-scrollbar{width:4px}
         ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+        .drop-zone{transition:all 0.2s ease}
+        .drop-zone-active{box-shadow:inset 0 0 0 2px var(--navy);transform:scale(1.01)}
+        .drag-item{cursor:grab;transition:opacity 0.15s, transform 0.15s}
+        .drag-item:active{cursor:grabbing;opacity:0.7;transform:scale(0.98)}
       `}</style>
       <div style={{display:'flex',flexDirection:'column',height:'100vh'}}>
         {/* ─── Top bar ─── */}
@@ -331,33 +356,64 @@ export default function AppInner() {
               {activeTab === 'jobs' && (
                 <>
                   <div style={{flex:1,overflowY:'auto',padding:10}}>
-                    {todoJobs.length > 0 && <>
-                      <SectionLabel>{T.todoSection} — {todoJobs.length}</SectionLabel>
-                      {todoJobs.map(job => (
-                        <JobItem key={job.id} job={job} lang={lang}
-                          selected={selectedIds.includes(job.id)}
-                          onSelect={() => toggleSelect(job.id)}
-                          onStatus={s => updateStatus(job.id, s)}
-                          onTogglePriority={() => togglePriority(job.id)}
-                          T={T}/>
-                      ))}
-                    </>}
+                    {/* ─── Drag & drop priority zones ─── */}
+                    {todoJobs.length > 0 && (
+                      <>
+                        <div style={{fontSize:9,color:'var(--muted)',textAlign:'center',marginBottom:6,fontWeight:500}}>{T.dragHint}</div>
+                        {PRIORITY_ZONES.map(zone => {
+                          const jobsInZone = todoJobs.filter(j => (j.priority || 'medium') === zone.key)
+                          const isOver = dragOverZone === zone.key
+                          return (
+                            <div key={zone.key}
+                              className={'drop-zone' + (isOver ? ' drop-zone-active' : '')}
+                              onDragOver={e => handleDragOver(e, zone.key)}
+                              onDragLeave={handleDragLeave}
+                              onDrop={e => handleDrop(e, zone.key)}
+                              style={{
+                                marginBottom:8,
+                                borderRadius:10,
+                                border:'1.5px dashed ' + (isOver ? 'var(--navy)' : zone.border),
+                                background: isOver ? zone.bg : 'transparent',
+                                padding: '6px 8px',
+                                minHeight: 44,
+                              }}>
+                              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:jobsInZone.length > 0 ? 6 : 0}}>
+                                <span style={{fontSize:10,color:zone.color,fontWeight:700}}>{zone.icon}</span>
+                                <span style={{fontSize:10,fontWeight:700,color:zone.color,flex:1}}>{PRIORITY_LABELS[lang][zone.key]}</span>
+                                <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>{jobsInZone.length}</span>
+                              </div>
+                              {jobsInZone.map(job => (
+                                <JobItem key={job.id} job={job} lang={lang}
+                                  selected={selectedIds.includes(job.id)}
+                                  onSelect={() => toggleSelect(job.id)}
+                                  onStatus={s => updateStatus(job.id, s)}
+                                  onDragStart={e => handleDragStart(e, job.id)}
+                                  T={T}/>
+                              ))}
+                              {jobsInZone.length === 0 && (
+                                <div style={{fontSize:10,color:'var(--muted)',textAlign:'center',padding:'4px 0',opacity:0.6}}>
+                                  {lang === 'fr' ? 'Déposez ici' : 'Drop here'}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
+
+                    {/* ─── Done & skipped (read only) ─── */}
                     {doneJobs.length > 0 && <>
                       <SectionLabel mt>{T.doneSection} — {doneJobs.length}</SectionLabel>
                       {doneJobs.map(job => (
                         <JobItem key={job.id} job={job} lang={lang}
-                          onStatus={s => updateStatus(job.id, s)}
-                          onTogglePriority={() => togglePriority(job.id)}
-                          T={T}/>
+                          onStatus={s => updateStatus(job.id, s)} T={T}/>
                       ))}
                     </>}
                     {ecarteJobs.length > 0 && <>
                       <SectionLabel mt>{T.ecarteSection} — {ecarteJobs.length}</SectionLabel>
                       {ecarteJobs.map(job => (
                         <JobItem key={job.id} job={job} lang={lang}
-                          onStatus={s => updateStatus(job.id, s)}
-                          onTogglePriority={() => togglePriority(job.id)}
-                          T={T}/>
+                          onStatus={s => updateStatus(job.id, s)} T={T}/>
                       ))}
                     </>}
                   </div>
@@ -392,35 +448,35 @@ export default function AppInner() {
   )
 }
 
-/* ─── Job item with priority toggle ─── */
+/* ─── Job item (draggable for todo jobs) ─── */
 
-function JobItem({ job, selected, onSelect, onStatus, onTogglePriority, T, lang }) {
+function JobItem({ job, selected, onSelect, onStatus, onDragStart, T, lang }) {
   const [open, setOpen] = useState(false)
-  const prio = job.priority || 'medium'
-  const prioLabel = PRIORITY_LABELS[lang]?.[prio] || prio
+  const isDraggable = job.status === 'todo' && !!onDragStart
   const hasMeta = (job.parcels && job.parcels > 0) || (job.volumeM3 && job.volumeM3 > 0)
 
   return (
     <div style={{position:'relative',marginBottom:3}}>
-      <div onClick={() => job.status === 'todo' && onSelect ? onSelect() : setOpen(!open)}
-        style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,border:'1px solid '+(selected?'var(--blue)':'transparent'),background:selected?'var(--blue-soft)':job.status==='ecarte'?'var(--warning-soft)':'transparent',cursor:'pointer',opacity:job.status==='done'?.45:1}}>
-        <div style={{width:9,height:9,borderRadius:'50%',background:STATUS_COLORS[job.status],flexShrink:0}}/>
+      <div
+        draggable={isDraggable}
+        onDragStart={isDraggable ? onDragStart : undefined}
+        className={isDraggable ? 'drag-item' : ''}
+        onClick={() => job.status === 'todo' && onSelect ? onSelect() : setOpen(!open)}
+        style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid '+(selected?'var(--blue)':'transparent'),background:selected?'var(--blue-soft)':job.status==='ecarte'?'var(--warning-soft)':'var(--white)',cursor:isDraggable?'grab':'pointer',opacity:job.status==='done'?.45:1}}>
+        {isDraggable && (
+          <span style={{fontSize:10,color:'var(--muted)',cursor:'grab',flexShrink:0,userSelect:'none'}}>⠿</span>
+        )}
+        <div style={{width:8,height:8,borderRadius:'50%',background:STATUS_COLORS[job.status],flexShrink:0}}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:12,fontWeight:600,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.owner_name||job.address}</div>
-          <div style={{fontSize:10,color:'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.address}</div>
+          <div style={{fontSize:11,fontWeight:600,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.owner_name||job.address}</div>
+          <div style={{fontSize:9,color:'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.address}</div>
           {hasMeta && (
-            <div style={{display:'flex',gap:8,marginTop:2}}>
-              {job.parcels > 0 && <span style={{fontSize:9,color:'var(--muted)'}}>{job.parcels} {T.parcels}</span>}
-              {job.volumeM3 > 0 && <span style={{fontSize:9,color:'var(--muted)'}}>{job.volumeM3} {T.volume}</span>}
+            <div style={{display:'flex',gap:8,marginTop:1}}>
+              {job.parcels > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{job.parcels} {T.parcels}</span>}
+              {job.volumeM3 > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{job.volumeM3} {T.volume}</span>}
             </div>
           )}
         </div>
-        {/* Priority badge — click to cycle */}
-        <span onClick={e => { e.stopPropagation(); onTogglePriority() }}
-          title={prioLabel}
-          style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:5,background:PRIORITY_BG[prio],color:PRIORITY_COLORS[prio],cursor:'pointer',flexShrink:0,userSelect:'none',transition:'all 0.15s'}}>
-          {prio === 'high' ? '▲' : prio === 'low' ? '▼' : '●'} {prioLabel}
-        </span>
         <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:5,background:STATUS_BG[job.status],color:STATUS_COLORS[job.status],flexShrink:0}}>
           {job.status==='todo'?(selected?T.selected:T.statusTodo):job.status==='done'?T.statusDone:T.statusEcarte}
         </span>
@@ -437,7 +493,7 @@ function JobItem({ job, selected, onSelect, onStatus, onTogglePriority, T, lang 
   )
 }
 
-/* ─── Day block in planning with capacity info ─── */
+/* ─── Day block in planning ─── */
 
 function DayBlock({ day, colors, onHover, T, lang }) {
   return (
