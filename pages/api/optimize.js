@@ -89,7 +89,7 @@ export default async function handler(req, res) {
         owner_name: stop.owner,
         address: stop.address,
         type: stop.type,
-        status: existing?.status || 'todo',
+        status: existing?.status || 'pending',
         lat: existing?.lat || geo?.lat || null,
         lon: existing?.lon || geo?.lng || null,
         orders: stop.orders,
