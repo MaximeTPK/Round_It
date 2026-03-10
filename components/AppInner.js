@@ -15,7 +15,7 @@ function getClient() {
 }
 
 const MapView = dynamic(() => import('./MapView'), { ssr: false })
-const ChatBot = dynamic(() => import('./ChatBot'), { ssr: false })
+const ChatPanel = dynamic(() => import('./ChatPanel'), { ssr: false })
 
 const COLORS = ['#2ECC8F','#0891B2','#0D9488','#7C3AED','#B45309','#BE123C','#15803D','#C2410C']
 const DEPOT_KEY = 'roundit_depot'
@@ -471,6 +471,7 @@ export default function AppInner() {
           {/* ─── Side panel ─── */}
           {allJobs.length > 0 && (
             <div style={{width:420,background:'var(--white)',borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+              {/* ─── Top: tabs + action buttons ─── */}
               <div style={{display:'flex',borderBottom:'1px solid var(--border)'}}>
                 {['jobs','planning'].map(tab => (
                   <button key={tab} onClick={() => setActiveTab(tab)} style={{flex:1,padding:'10px 0',fontSize:12,fontWeight:600,background:'none',cursor:'pointer',color:activeTab===tab?'var(--navy)':'var(--muted)',border:'none',borderBottom:activeTab===tab?'2px solid var(--blue)':'2px solid transparent'}}>
@@ -478,91 +479,90 @@ export default function AppInner() {
                   </button>
                 ))}
               </div>
-
-              {activeTab === 'jobs' && (
-                <>
-                  <div style={{flex:1,overflowY:'auto',padding:10}}>
-
-                    {/* ─── PENDING section ─── */}
-                    {pendingJobs.length > 0 && (
-                      <div style={{marginBottom:10}}>
-                        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
-                          <SectionLabel>{T.pendingSection} — {pendingJobs.length}</SectionLabel>
-                          <button onClick={selectAllPending} style={{marginLeft:'auto',padding:'3px 8px',borderRadius:5,fontSize:9,fontWeight:700,background:'var(--indigo-soft)',color:'var(--indigo)',border:'none',cursor:'pointer'}}>{T.selectAllPending}</button>
-                        </div>
-                        {pendingJobs.map(job => (
-                          <JobItem key={job.id} job={job} lang={lang}
-                            onStatus={s => updateStatus(job.id, s)}
-                            onUpdateJob={f => updateJob(job.id, f)}
-                            onSelectForRoute={() => selectForRoute(job.id)}
-                            T={T}/>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* ─── TODO / selected with priority zones ─── */}
-                    {todoJobs.length > 0 && (
-                      <>
-                        <SectionLabel>{T.todoSection} — {todoJobs.length}</SectionLabel>
-                        <div style={{fontSize:9,color:'var(--muted)',textAlign:'center',marginBottom:6,fontWeight:500}}>{T.dragHint}</div>
-                        {PRIORITY_ZONES.map(zone => {
-                          const jobsInZone = todoJobs.filter(j => (j.priority||'medium') === zone.key)
-                          const isOver = dragOverZone === zone.key
-                          return (
-                            <div key={zone.key} className={'drop-zone'+(isOver?' drop-zone-active':'')}
-                              onDragOver={e => handleDragOver(e, zone.key)} onDragLeave={handleDragLeave} onDrop={e => handleDrop(e, zone.key)}
-                              style={{marginBottom:8,borderRadius:10,border:'1.5px dashed '+(isOver?'var(--navy)':zone.border),background:isOver?zone.bg:'transparent',padding:'6px 8px',minHeight:44}}>
-                              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:jobsInZone.length>0?6:0}}>
-                                <span style={{fontSize:10,color:zone.color,fontWeight:700}}>{zone.icon}</span>
-                                <span style={{fontSize:10,fontWeight:700,color:zone.color,flex:1}}>{PRIORITY_LABELS[lang][zone.key]}</span>
-                                <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>{jobsInZone.length}</span>
-                              </div>
-                              {jobsInZone.map(job => (
-                                <JobItem key={job.id} job={job} lang={lang}
-                                  onStatus={s => updateStatus(job.id, s)}
-                                  onDragStart={e => handleDragStart(e, job.id)}
-                                  onUpdateJob={f => updateJob(job.id, f)}
-                                  onUnselectFromRoute={() => unselectFromRoute(job.id)}
-                                  T={T}/>
-                              ))}
-                              {jobsInZone.length === 0 && <div style={{fontSize:10,color:'var(--muted)',textAlign:'center',padding:'4px 0',opacity:0.6}}>{lang==='fr'?'Déposez ici':'Drop here'}</div>}
-                            </div>
-                          )
-                        })}
-                      </>
-                    )}
-
-                    {doneJobs.length > 0 && <><SectionLabel mt>{T.doneSection} — {doneJobs.length}</SectionLabel>{doneJobs.map(j => <JobItem key={j.id} job={j} lang={lang} onStatus={s => updateStatus(j.id,s)} onUpdateJob={f => updateJob(j.id,f)} T={T}/>)}</>}
-                    {ecarteJobs.length > 0 && <><SectionLabel mt>{T.ecarteSection} — {ecarteJobs.length}</SectionLabel>{ecarteJobs.map(j => <JobItem key={j.id} job={j} lang={lang} onStatus={s => updateStatus(j.id,s)} onUpdateJob={f => updateJob(j.id,f)} T={T}/>)}</>}
-                  </div>
-                  <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',display:'flex',gap:8}}>
-                    <button onClick={selectAllPending} style={{flex:1,padding:'9px',background:'var(--indigo-soft)',border:'1px solid var(--indigo)',borderRadius:8,fontSize:12,fontWeight:600,color:'var(--indigo)',cursor:'pointer'}}>{T.selectAllPending}</button>
-                    <button onClick={handleOptimize} disabled={loading} style={{flex:1,padding:'9px',background:'var(--navy)',color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'}}>
+              <div style={{padding:'8px 12px',borderBottom:'1px solid var(--border)',display:'flex',gap:8}}>
+                {activeTab === 'jobs' ? (
+                  <>
+                    <button onClick={selectAllPending} style={{flex:1,padding:'8px',background:'var(--indigo-soft)',border:'1px solid var(--indigo)',borderRadius:8,fontSize:11,fontWeight:600,color:'var(--indigo)',cursor:'pointer'}}>{T.selectAllPending}</button>
+                    <button onClick={handleOptimize} disabled={loading} style={{flex:1,padding:'8px',background:'var(--navy)',color:'#fff',border:'none',borderRadius:8,fontSize:11,fontWeight:600,cursor:'pointer'}}>
                       {todoJobs.length > 0 ? T.optimizeBtn+' ('+todoJobs.length+')' : T.optimizeBtn}
                     </button>
-                  </div>
-                </>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={handleExport} style={{flex:1,padding:'8px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,fontSize:11,fontWeight:600,color:'var(--navy)',cursor:'pointer'}}>{T.exportExcel}</button>
+                    <button onClick={handleOptimize} disabled={loading} style={{flex:1,padding:'8px',background:'var(--navy)',color:'#fff',border:'none',borderRadius:8,fontSize:11,fontWeight:600,cursor:'pointer'}}>{T.recalculate}</button>
+                  </>
+                )}
+              </div>
+
+              {/* ─── Middle: scrollable content ─── */}
+              {activeTab === 'jobs' && (
+                <div style={{flex:1,overflowY:'auto',padding:10,minHeight:0}}>
+                  {pendingJobs.length > 0 && (
+                    <div style={{marginBottom:10}}>
+                      <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                        <SectionLabel>{T.pendingSection} — {pendingJobs.length}</SectionLabel>
+                        <button onClick={selectAllPending} style={{marginLeft:'auto',padding:'3px 8px',borderRadius:5,fontSize:9,fontWeight:700,background:'var(--indigo-soft)',color:'var(--indigo)',border:'none',cursor:'pointer'}}>{T.selectAllPending}</button>
+                      </div>
+                      {pendingJobs.map(job => (
+                        <JobItem key={job.id} job={job} lang={lang}
+                          onStatus={s => updateStatus(job.id, s)}
+                          onUpdateJob={f => updateJob(job.id, f)}
+                          onSelectForRoute={() => selectForRoute(job.id)}
+                          T={T}/>
+                      ))}
+                    </div>
+                  )}
+                  {todoJobs.length > 0 && (
+                    <>
+                      <SectionLabel>{T.todoSection} — {todoJobs.length}</SectionLabel>
+                      <div style={{fontSize:9,color:'var(--muted)',textAlign:'center',marginBottom:6,fontWeight:500}}>{T.dragHint}</div>
+                      {PRIORITY_ZONES.map(zone => {
+                        const jobsInZone = todoJobs.filter(j => (j.priority||'medium') === zone.key)
+                        const isOver = dragOverZone === zone.key
+                        return (
+                          <div key={zone.key} className={'drop-zone'+(isOver?' drop-zone-active':'')}
+                            onDragOver={e => handleDragOver(e, zone.key)} onDragLeave={handleDragLeave} onDrop={e => handleDrop(e, zone.key)}
+                            style={{marginBottom:8,borderRadius:10,border:'1.5px dashed '+(isOver?'var(--navy)':zone.border),background:isOver?zone.bg:'transparent',padding:'6px 8px',minHeight:44}}>
+                            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:jobsInZone.length>0?6:0}}>
+                              <span style={{fontSize:10,color:zone.color,fontWeight:700}}>{zone.icon}</span>
+                              <span style={{fontSize:10,fontWeight:700,color:zone.color,flex:1}}>{PRIORITY_LABELS[lang][zone.key]}</span>
+                              <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>{jobsInZone.length}</span>
+                            </div>
+                            {jobsInZone.map(job => (
+                              <JobItem key={job.id} job={job} lang={lang}
+                                onStatus={s => updateStatus(job.id, s)}
+                                onDragStart={e => handleDragStart(e, job.id)}
+                                onUpdateJob={f => updateJob(job.id, f)}
+                                onUnselectFromRoute={() => unselectFromRoute(job.id)}
+                                T={T}/>
+                            ))}
+                            {jobsInZone.length === 0 && <div style={{fontSize:10,color:'var(--muted)',textAlign:'center',padding:'4px 0',opacity:0.6}}>{lang==='fr'?'Déposez ici':'Drop here'}</div>}
+                          </div>
+                        )
+                      })}
+                    </>
+                  )}
+                  {doneJobs.length > 0 && <><SectionLabel mt>{T.doneSection} — {doneJobs.length}</SectionLabel>{doneJobs.map(j => <JobItem key={j.id} job={j} lang={lang} onStatus={s => updateStatus(j.id,s)} onUpdateJob={f => updateJob(j.id,f)} T={T}/>)}</>}
+                  {ecarteJobs.length > 0 && <><SectionLabel mt>{T.ecarteSection} — {ecarteJobs.length}</SectionLabel>{ecarteJobs.map(j => <JobItem key={j.id} job={j} lang={lang} onStatus={s => updateStatus(j.id,s)} onUpdateJob={f => updateJob(j.id,f)} T={T}/>)}</>}
+                </div>
               )}
 
               {activeTab === 'planning' && (
-                <>
-                  <div style={{flex:1,overflowY:'auto',padding:10}}>
-                    {plan.length === 0
-                      ? <div style={{textAlign:'center',color:'var(--muted)',fontSize:12,marginTop:40}}>{T.launchOptim}</div>
-                      : plan.map((day,di) => <DayBlock key={day.day} day={day} dayIdx={di} colors={COLORS} onHover={setHighlightTruck} T={T} lang={lang}
-                          onPlanDragStart={handlePlanDragStart} onPlanDragOver={handlePlanDragOver} onPlanDragLeave={handlePlanDragLeave} onPlanDrop={handlePlanDrop} planDragOver={planDragOver}/>)
-                    }
-                  </div>
-                  <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',display:'flex',gap:8}}>
-                    <button onClick={handleExport} style={{flex:1,padding:'9px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,fontSize:12,fontWeight:600,color:'var(--navy)',cursor:'pointer'}}>{T.exportExcel}</button>
-                    <button onClick={handleOptimize} disabled={loading} style={{flex:1,padding:'9px',background:'var(--navy)',color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'}}>{T.recalculate}</button>
-                  </div>
-                </>
+                <div style={{flex:1,overflowY:'auto',padding:10,minHeight:0}}>
+                  {plan.length === 0
+                    ? <div style={{textAlign:'center',color:'var(--muted)',fontSize:12,marginTop:40}}>{T.launchOptim}</div>
+                    : plan.map((day,di) => <DayBlock key={day.day} day={day} dayIdx={di} colors={COLORS} onHover={setHighlightTruck} T={T} lang={lang}
+                        onPlanDragStart={handlePlanDragStart} onPlanDragOver={handlePlanDragOver} onPlanDragLeave={handlePlanDragLeave} onPlanDrop={handlePlanDrop} planDragOver={planDragOver}/>)
+                  }
+                </div>
               )}
+
+              {/* ─── Bottom: Chat It ─── */}
+              <ChatPanel lang={lang} allJobs={allJobs} plan={plan} depotCoords={depotCoords}/>
             </div>
           )}
         </div>
-        <ChatBot lang={lang} allJobs={allJobs} plan={plan} depotCoords={depotCoords}/>
       </div>
     </>
   )
