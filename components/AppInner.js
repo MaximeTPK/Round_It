@@ -182,7 +182,14 @@ export default function AppInner() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setAllJobs(data.allJobs); setPlan(data.plan); setDepotCoords(data.depot); setActiveTab('jobs')
+      // Conserver les priorités définies par l'utilisateur
+const priorityMap = {}
+allJobs.forEach(j => { if (j.priority) priorityMap[j.id] = j.priority })
+const mergedJobs = data.allJobs.map(j => ({
+  ...j,
+  priority: jobPriorities[j.id] || priorityMap[j.id] || j.priority || 'medium'
+}))
+setAllJobs(mergedJobs); setPlan(data.plan); setDepotCoords(data.depot); setActiveTab('planning')
     } catch (e) { setError(e.message) }
     finally { setLoading(false); setProgress('') }
   }
