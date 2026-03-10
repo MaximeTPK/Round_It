@@ -115,16 +115,24 @@ export default function AppInner() {
   const recalcTruck = (stops, depot, startMin) => {
     let time = startMin
     let totalDist = 0
+    let totalWait = 0
     let prev = depot
     let totalParcels = 0
     let totalVolumeM3 = 0
     const detailed = []
     for (const stop of stops) {
       const travel = travelTime(prev, stop)
-      const arrival = time + travel
+      let arrival = time + travel
+      let waitTime = 0
+      if (stop.timeFrom != null && arrival < stop.timeFrom) {
+        waitTime = stop.timeFrom - arrival
+        arrival = stop.timeFrom
+      }
       const svcTime = computeServiceTime(stop)
-      detailed.push({ ...stop, serviceTime: svcTime, arrivalTime: formatTime(arrival), departureTime: formatTime(arrival + svcTime) })
+      const lateBy = (stop.timeTo != null && arrival > stop.timeTo) ? Math.round(arrival - stop.timeTo) : 0
+      detailed.push({ ...stop, serviceTime: svcTime, arrivalTime: formatTime(arrival), departureTime: formatTime(arrival + svcTime), waitTime: Math.round(waitTime), lateBy })
       totalDist += haversine(prev, stop)
+      totalWait += waitTime
       time = arrival + svcTime
       prev = stop
       totalParcels += stop.parcels || 0
@@ -136,6 +144,7 @@ export default function AppInner() {
       stops: detailed,
       totalDistance: Math.round((totalDist + returnDist) * 10) / 10,
       totalDuration: Math.round(time - startMin + returnTravel),
+      totalWait: Math.round(totalWait),
       returnTime: formatTime(time + returnTravel),
       totalParcels,
       totalVolumeM3: Math.round(totalVolumeM3 * 100) / 100,
@@ -359,6 +368,11 @@ export default function AppInner() {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
+  const updateJob = (id, fields) => {
+    if (!id) return
+    setAllJobs(prev => prev.map(j => j.id === id ? { ...j, ...fields } : j))
+  }
+
   const selectAll = () => setSelectedIds(allJobs.filter(j => j.status === 'todo').map(j => j.id))
 
   const handleExport = () => {
@@ -571,6 +585,7 @@ export default function AppInner() {
                                   onSelect={() => toggleSelect(job.id)}
                                   onStatus={s => updateStatus(job.id, s)}
                                   onDragStart={e => handleDragStart(e, job.id)}
+                                  onUpdateJob={(fields) => updateJob(job.id, fields)}
                                   T={T}/>
                               ))}
                               {jobsInZone.length === 0 && (
@@ -586,13 +601,13 @@ export default function AppInner() {
                     {doneJobs.length > 0 && <>
                       <SectionLabel mt>{T.doneSection} — {doneJobs.length}</SectionLabel>
                       {doneJobs.map(job => (
-                        <JobItem key={job.id} job={job} lang={lang} onStatus={s => updateStatus(job.id, s)} T={T}/>
+                        <JobItem key={job.id} job={job} lang={lang} onStatus={s => updateStatus(job.id, s)} onUpdateJob={(fields) => updateJob(job.id, fields)} T={T}/>
                       ))}
                     </>}
                     {ecarteJobs.length > 0 && <>
                       <SectionLabel mt>{T.ecarteSection} — {ecarteJobs.length}</SectionLabel>
                       {ecarteJobs.map(job => (
-                        <JobItem key={job.id} job={job} lang={lang} onStatus={s => updateStatus(job.id, s)} T={T}/>
+                        <JobItem key={job.id} job={job} lang={lang} onStatus={s => updateStatus(job.id, s)} onUpdateJob={(fields) => updateJob(job.id, fields)} T={T}/>
                       ))}
                     </>}
                   </div>
@@ -628,12 +643,26 @@ export default function AppInner() {
   )
 }
 
-/* ─── Job item ─── */
+/* ─── Job item with editable time windows ─── */
 
-function JobItem({ job, selected, onSelect, onStatus, onDragStart, T, lang }) {
+function JobItem({ job, selected, onSelect, onStatus, onDragStart, onUpdateJob, T, lang }) {
   const [open, setOpen] = useState(false)
   const isDraggable = job.status === 'todo' && !!onDragStart
   const hasMeta = (job.parcels && job.parcels > 0) || (job.volumeM3 && job.volumeM3 > 0)
+  const hasWindow = job.timeFrom != null || job.timeTo != null
+
+  const minToTime = (m) => {
+    if (m == null) return ''
+    const h = Math.floor(m / 60)
+    const mm = m % 60
+    return String(h).padStart(2,'0') + ':' + String(mm).padStart(2,'0')
+  }
+
+  const timeToMin = (str) => {
+    if (!str) return null
+    const [h, m] = str.split(':').map(Number)
+    return h * 60 + (m || 0)
+  }
 
   return (
     <div style={{position:'relative',marginBottom:3}}>
@@ -641,8 +670,8 @@ function JobItem({ job, selected, onSelect, onStatus, onDragStart, T, lang }) {
         draggable={isDraggable}
         onDragStart={isDraggable ? onDragStart : undefined}
         className={isDraggable ? 'drag-item' : ''}
-        onClick={() => job.status === 'todo' && onSelect ? onSelect() : setOpen(!open)}
-        style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,border:'1px solid '+(selected?'var(--blue)':'transparent'),background:selected?'var(--blue-soft)':job.status==='ecarte'?'var(--warning-soft)':'var(--white)',cursor:isDraggable?'grab':'pointer',opacity:job.status==='done'?.45:1}}>
+        onClick={() => job.status === 'todo' && onSelect ? onSelect() : null}
+        style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:open?'8px 8px 0 0':'8px',border:'1px solid '+(selected?'var(--blue)':open?'var(--border)':'transparent'),background:selected?'var(--blue-soft)':job.status==='ecarte'?'var(--warning-soft)':'var(--white)',cursor:isDraggable?'grab':'pointer',opacity:job.status==='done'?.45:1}}>
         {isDraggable && (
           <span style={{fontSize:10,color:'var(--muted)',cursor:'grab',flexShrink:0,userSelect:'none'}}>⠿</span>
         )}
@@ -650,23 +679,59 @@ function JobItem({ job, selected, onSelect, onStatus, onDragStart, T, lang }) {
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:11,fontWeight:600,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.owner_name||job.address}</div>
           <div style={{fontSize:9,color:'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.address}</div>
-          {hasMeta && (
-            <div style={{display:'flex',gap:8,marginTop:1}}>
-              {job.parcels > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{job.parcels} {T.parcels}</span>}
-              {job.volumeM3 > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{job.volumeM3} {T.volume}</span>}
-            </div>
-          )}
+          <div style={{display:'flex',gap:6,marginTop:1,flexWrap:'wrap'}}>
+            {hasMeta && job.parcels > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{job.parcels} {T.parcels}</span>}
+            {hasMeta && job.volumeM3 > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{job.volumeM3} {T.volume}</span>}
+            {hasWindow && (
+              <span style={{fontSize:8,color:job.timeStrict?'var(--danger)':'#0891B2',fontWeight:500}}>
+                {job.timeStrict ? '🔒' : '🕐'} {minToTime(job.timeFrom) || '...'}-{minToTime(job.timeTo) || '...'}
+              </span>
+            )}
+          </div>
         </div>
         <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:5,background:STATUS_BG[job.status],color:STATUS_COLORS[job.status],flexShrink:0}}>
           {job.status==='todo'?(selected?T.selected:T.statusTodo):job.status==='done'?T.statusDone:T.statusEcarte}
         </span>
-        <span style={{fontSize:11,color:'var(--muted)',cursor:'pointer',flexShrink:0}} onClick={e=>{e.stopPropagation();setOpen(!open)}}>⋯</span>
+        <span style={{fontSize:11,color:open?'var(--navy)':'var(--muted)',cursor:'pointer',flexShrink:0,fontWeight:open?700:400}} onClick={e=>{e.stopPropagation();setOpen(!open)}}>{open?'✕':'⋯'}</span>
       </div>
       {open && (
-        <div style={{position:'absolute',right:0,top:'100%',zIndex:50,background:'var(--white)',border:'1px solid var(--border)',borderRadius:8,padding:4,boxShadow:'0 4px 16px rgba(0,0,0,0.1)',display:'flex',gap:4}}>
-          <button onClick={()=>{onStatus('todo');setOpen(false)}} style={{padding:'5px 8px',borderRadius:6,background:'var(--blue-soft)',color:'var(--blue)',fontSize:10,fontWeight:700,cursor:'pointer',border:'none'}}>{T.statusTodo}</button>
-          <button onClick={()=>{onStatus('done');setOpen(false)}} style={{padding:'5px 8px',borderRadius:6,background:'var(--success-soft)',color:'var(--success)',fontSize:10,fontWeight:700,cursor:'pointer',border:'none'}}>✅ {T.statusDone}</button>
-          <button onClick={()=>{onStatus('ecarte');setOpen(false)}} style={{padding:'5px 8px',borderRadius:6,background:'var(--warning-soft)',color:'var(--warning)',fontSize:10,fontWeight:700,cursor:'pointer',border:'none'}}>🔶 {T.statusEcarte}</button>
+        <div style={{border:'1px solid var(--border)',borderTop:'none',borderRadius:'0 0 8px 8px',background:'var(--white)',padding:'8px 10px',display:'flex',flexDirection:'column',gap:8}}>
+          {/* Fenêtre horaire */}
+          <div>
+            <div style={{fontSize:9,fontWeight:700,color:'var(--muted)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.04em'}}>
+              {lang === 'fr' ? 'Fenêtre horaire' : 'Time window'}
+            </div>
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              <input type="time" value={minToTime(job.timeFrom)} onChange={e => onUpdateJob({ timeFrom: timeToMin(e.target.value) })}
+                style={{flex:1,padding:'5px 6px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,outline:'none'}}/>
+              <span style={{fontSize:10,color:'var(--muted)'}}>→</span>
+              <input type="time" value={minToTime(job.timeTo)} onChange={e => onUpdateJob({ timeTo: timeToMin(e.target.value) })}
+                style={{flex:1,padding:'5px 6px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,outline:'none'}}/>
+              {(job.timeFrom != null || job.timeTo != null) && (
+                <span onClick={() => onUpdateJob({ timeFrom: null, timeTo: null, timeStrict: false })}
+                  style={{fontSize:9,color:'var(--danger)',cursor:'pointer',fontWeight:600}}>✕</span>
+              )}
+            </div>
+          </div>
+          {/* Mode strict / souple */}
+          {(job.timeFrom != null || job.timeTo != null) && (
+            <div style={{display:'flex',gap:6}}>
+              <button onClick={() => onUpdateJob({ timeStrict: true })}
+                style={{flex:1,padding:'5px',borderRadius:6,fontSize:10,fontWeight:600,cursor:'pointer',border:job.timeStrict?'1.5px solid var(--danger)':'1px solid var(--border)',background:job.timeStrict?'#FEF2F2':'var(--white)',color:job.timeStrict?'var(--danger)':'var(--muted)'}}>
+                🔒 {lang === 'fr' ? 'Strict' : 'Strict'}
+              </button>
+              <button onClick={() => onUpdateJob({ timeStrict: false })}
+                style={{flex:1,padding:'5px',borderRadius:6,fontSize:10,fontWeight:600,cursor:'pointer',border:!job.timeStrict?'1.5px solid #0891B2':'1px solid var(--border)',background:!job.timeStrict?'#ECFEFF':'var(--white)',color:!job.timeStrict?'#0891B2':'var(--muted)'}}>
+                🕐 {lang === 'fr' ? 'Souple' : 'Flexible'}
+              </button>
+            </div>
+          )}
+          {/* Statut */}
+          <div style={{display:'flex',gap:4,borderTop:'1px solid var(--border)',paddingTop:6}}>
+            <button onClick={()=>{onStatus('todo');setOpen(false)}} style={{flex:1,padding:'5px 8px',borderRadius:6,background:'var(--blue-soft)',color:'var(--blue)',fontSize:10,fontWeight:700,cursor:'pointer',border:'none'}}>{T.statusTodo}</button>
+            <button onClick={()=>{onStatus('done');setOpen(false)}} style={{flex:1,padding:'5px 8px',borderRadius:6,background:'var(--success-soft)',color:'var(--success)',fontSize:10,fontWeight:700,cursor:'pointer',border:'none'}}>✅ {T.statusDone}</button>
+            <button onClick={()=>{onStatus('ecarte');setOpen(false)}} style={{flex:1,padding:'5px 8px',borderRadius:6,background:'var(--warning-soft)',color:'var(--warning)',fontSize:10,fontWeight:700,cursor:'pointer',border:'none'}}>🔶 {T.statusEcarte}</button>
+          </div>
         </div>
       )}
     </div>
@@ -711,10 +776,22 @@ function DayBlock({ day, dayIdx, colors, onHover, T, lang, onPlanDragStart, onPl
                 onDrop={e => { e.stopPropagation(); onPlanDrop(e, dayIdx, ti, si) }}
                 onDragOver={e => { e.preventDefault(); e.stopPropagation() }}
                 className="drag-item"
-                style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px 5px 14px',borderRadius:6,marginBottom:2,borderLeft:'2px solid '+colors[ti%colors.length],background:colors[ti%colors.length]+'10',cursor:'grab'}}>
+                style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px 5px 14px',borderRadius:6,marginBottom:2,borderLeft:'2px solid '+colors[ti%colors.length],background:stop.lateBy > 0 ? '#FEF2F2' : colors[ti%colors.length]+'10',cursor:'grab'}}>
                 <span style={{fontSize:9,color:'var(--muted)',cursor:'grab',flexShrink:0,userSelect:'none'}}>⠿</span>
                 <span style={{fontSize:10,fontWeight:600,color:colors[ti%colors.length],minWidth:38}}>{stop.arrivalTime}</span>
-                <span style={{flex:1,fontSize:11,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{stop.owner_name||stop.address}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{stop.owner_name||stop.address}</div>
+                  <div style={{display:'flex',gap:6,marginTop:1,flexWrap:'wrap'}}>
+                    <span style={{fontSize:8,color:'var(--navy)',fontWeight:600}}>⏱ {stop.serviceTime || 0} min</span>
+                    {stop.waitTime > 0 && <span style={{fontSize:8,color:'#0891B2',fontWeight:500}}>⏸ {stop.waitTime} min</span>}
+                    {stop.lateBy > 0 && <span style={{fontSize:8,color:'var(--danger)',fontWeight:600}}>⚠ +{stop.lateBy} min</span>}
+                    {(stop.timeFrom != null || stop.timeTo != null) && (
+                      <span style={{fontSize:8,color:stop.timeStrict?'var(--danger)':'var(--muted)',fontWeight:500}}>
+                        {stop.timeStrict ? '🔒' : '🕐'} {stop.timeFrom != null ? formatMinutes(stop.timeFrom) : '...'}-{stop.timeTo != null ? formatMinutes(stop.timeTo) : '...'}
+                      </span>
+                    )}
+                  </div>
+                </div>
                 {stop.parcels > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{stop.parcels}📦</span>}
                 <span style={{fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:4,background:stop.type==='picking'?'#FEF3C7':'var(--blue-soft)',color:stop.type==='picking'?'#B45309':'var(--blue)'}}>
                   {stop.type === 'picking' ? 'P' : 'D'}
@@ -735,6 +812,12 @@ function DayBlock({ day, dayIdx, colors, onHover, T, lang, onPlanDragStart, onPl
 
 function SectionLabel({ children, mt }) {
   return <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',padding:'4px 6px',marginBottom:4,marginTop:mt?8:0}}>{children}</div>
+}
+
+function formatMinutes(min) {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0')
 }
 
 function UploadZone({ label, files, onFile, inputRef }) {
