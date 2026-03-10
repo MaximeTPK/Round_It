@@ -27,6 +27,8 @@ export default async function handler(req, res) {
     const endTime = cfg.endTime || '18:00'
     const sessionDate = cfg.sessionDate || new Date().toISOString().slice(0, 10)
     const selectedIds = cfg.selectedIds || null
+    const truckCapacity = cfg.truckCapacity || null
+    const jobPriorities = cfg.jobPriorities || {}
 
     let newStops = []
     if (pickingPart) newStops = [...newStops, ...parsePickingCSV(pickingPart.data.toString('utf-8'))]
@@ -76,6 +78,8 @@ export default async function handler(req, res) {
         lat: existing?.lat || geo?.lat || null,
         lon: existing?.lon || geo?.lon || null,
         orders: stop.orders,
+        parcels: stop.parcels || 0,
+        volumeM3: stop.volumeM3 || 0,
         session_date: sessionDate,
         user_id: userId,
       }
@@ -93,7 +97,11 @@ export default async function handler(req, res) {
       if (!j.lat || !j.lon) return false
       if (selectedIds && selectedIds.length > 0) return selectedIds.includes(j.id)
       return true
-    })
+    }).map(j => ({
+      ...j,
+      // Appliquer les priorités définies côté UI
+      priority: jobPriorities[j.id] || j.priority || 'medium',
+    }))
 
     const failed = jobs.filter(j => !j.lat || !j.lon)
 
@@ -102,7 +110,7 @@ export default async function handler(req, res) {
     const startMin = sh * 60 + (sm || 0)
     const endMin = eh * 60 + (em || 0)
 
-    const plan = solveMultiDayVRP(depot, jobsToOptimize, numTrucks, numDays, startMin, endMin)
+    const plan = solveMultiDayVRP(depot, jobsToOptimize, numTrucks, numDays, startMin, endMin, truckCapacity)
 
     res.status(200).json({ plan, allJobs: jobs, failed, depot, sessionDate })
   } catch (err) {
