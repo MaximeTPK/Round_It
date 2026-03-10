@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
 
 const COLORS = ['#2563EB', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C', '#15803D', '#C2410C']
-const STATUS_COLORS = { todo: '#2563EB', done: '#059669', ecarte: '#D97706' }
+const STATUS_COLORS = { pending: '#6366F1', todo: '#2563EB', done: '#059669', ecarte: '#D97706' }
 const REGISTRY = {}
 
-export default function MapView({ jobs, routes, depot, highlightTruck, onStatusChange, onSelect, selectedIds = [], lang = 'fr' }) {
+export default function MapView({ jobs, routes, depot, highlightTruck, onStatusChange, onSelect, selectedIds = [], lang = 'fr', showRoutes = false }) {
   const mapRef = useRef(null)
   const instanceRef = useRef(null)
   const layersRef = useRef([])
@@ -16,10 +16,14 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
   useEffect(() => {
     if (instanceRef.current) return
     const L = require('leaflet')
-    instanceRef.current = L.map(mapRef.current, { center: [48.8566, 2.3522], zoom: 12 })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap', maxZoom: 19,
+    instanceRef.current = L.map(mapRef.current, { center: [48.8566, 2.3522], zoom: 12, zoomControl: false })
+    // CartoDB Positron — fond clair minimaliste
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© <a href="https://carto.com/">CARTO</a> © <a href="https://www.openstreetmap.org/">OSM</a>',
+      maxZoom: 19, subdomains: 'abcd',
     }).addTo(instanceRef.current)
+    // Contrôle zoom en bas à droite
+    L.control.zoom({ position: 'bottomright' }).addTo(instanceRef.current)
 
     window.__ri = (id, action, status) => {
       const r = REGISTRY[id]
@@ -50,7 +54,7 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
 
     const depotLon = getLon(depot)
 
-    if (routes && depot && depot.lat && depotLon) {
+    if (showRoutes && routes && depot && depot.lat && depotLon) {
       routes.forEach((truck, ti) => {
         const color = COLORS[ti % COLORS.length]
         const opacity = highlightTruck == null || highlightTruck === truck.truckId ? 1 : 0.15
@@ -112,7 +116,7 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
 
     if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40] })
     else if (depot && depot.lat && depotLon) map.setView([depot.lat, depotLon], 12)
-  }, [jobs, routes, depot, highlightTruck, selectedIds, lang, onStatusChange, onSelect])
+  }, [jobs, routes, depot, highlightTruck, selectedIds, lang, showRoutes, onStatusChange, onSelect])
 
   return <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
 }
