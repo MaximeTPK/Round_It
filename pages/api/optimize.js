@@ -15,8 +15,8 @@ export default async function handler(req, res) {
     if (!boundary) return res.status(400).json({ error: 'No boundary' })
 
     const parts = parseMultipart(buffer, boundary)
-    const pickingPart = parts.find(p => p.name === 'picking')
-    const deliveryPart = parts.find(p => p.name === 'delivery')
+    const pickingParts = parts.filter(p => p.name === 'picking')
+    const deliveryParts = parts.filter(p => p.name === 'delivery')
     const configPart = parts.find(p => p.name === 'config')
 
     const cfg = configPart ? JSON.parse(configPart.data.toString()) : {}
@@ -31,8 +31,21 @@ export default async function handler(req, res) {
     const jobPriorities = cfg.jobPriorities || {}
 
     let newStops = []
-    if (pickingPart) newStops = [...newStops, ...parsePickingCSV(pickingPart.data.toString('utf-8'))]
-    if (deliveryPart) newStops = [...newStops, ...parseDeliveryCSV(deliveryPart.data.toString('utf-8'))]
+    for (const part of pickingParts) {
+      newStops = [...newStops, ...parsePickingCSV(part.data.toString('utf-8'))]
+    }
+    for (const part of deliveryParts) {
+      newStops = [...newStops, ...parseDeliveryCSV(part.data.toString('utf-8'))]
+    }
+
+    // Dédoublonnage par order_id (le premier importé gagne)
+    const seen = new Set()
+    newStops = newStops.filter(s => {
+      const key = s.orders?.[0] || s.address
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 
     const { data: existingJobs } = await supabase
       .from('jobs')
