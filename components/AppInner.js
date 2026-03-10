@@ -15,6 +15,7 @@ function getClient() {
 }
 
 const MapView = dynamic(() => import('./MapView'), { ssr: false })
+const ChatBot = dynamic(() => import('./ChatBot'), { ssr: false })
 
 const COLORS = ['#2ECC8F','#0891B2','#0D9488','#7C3AED','#B45309','#BE123C','#15803D','#C2410C']
 const DEPOT_KEY = 'roundit_depot'
@@ -561,6 +562,7 @@ export default function AppInner() {
             </div>
           )}
         </div>
+        <ChatBot lang={lang} allJobs={allJobs} plan={plan} depotCoords={depotCoords}/>
       </div>
     </>
   )
