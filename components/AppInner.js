@@ -19,6 +19,14 @@ const COLORS = ['#2ECC8F', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C'
 const DEPOT_KEY = 'roundit_depot'
 const TRUCKS_KEY = 'roundit_trucks'
 
+const PRIORITY_CYCLE = { low: 'medium', medium: 'high', high: 'low' }
+const PRIORITY_LABELS = {
+  fr: { high: 'Haute', medium: 'Moyenne', low: 'Basse' },
+  en: { high: 'High', medium: 'Medium', low: 'Low' },
+}
+const PRIORITY_COLORS = { high: '#DC2626', medium: '#D97706', low: '#94A3B8' }
+const PRIORITY_BG = { high: '#FEF2F2', medium: '#FFFBEB', low: '#F1F5F9' }
+
 const I18N = {
   fr: {
     brand: 'RoundIT', pickingCsv: 'Picking CSV', deliveryCsv: 'Delivery CSV',
@@ -34,6 +42,9 @@ const I18N = {
     day: 'Jour', stops: 'stops', truck: 'Camion', km: 'km', return: 'retour', selected: 'Sélectionné',
     errorFile: 'Chargez au moins un fichier', errorDepot: "Saisissez l'adresse du dépôt",
     logout: 'Déconnexion',
+    maxParcels: 'Max colis/camion', maxVolume: 'Max m³/camion',
+    parcels: 'colis', volume: 'm³', serviceTime: 'min',
+    capacity: 'Capacité',
   },
   en: {
     brand: 'RoundIT', pickingCsv: 'Picking CSV', deliveryCsv: 'Delivery CSV',
@@ -49,6 +60,9 @@ const I18N = {
     day: 'Day', stops: 'stops', truck: 'Truck', km: 'km', return: 'return', selected: 'Selected',
     errorFile: 'Load at least one file', errorDepot: 'Enter the depot address',
     logout: 'Logout',
+    maxParcels: 'Max parcels/truck', maxVolume: 'Max m³/truck',
+    parcels: 'parcels', volume: 'm³', serviceTime: 'min',
+    capacity: 'Capacity',
   }
 }
 
@@ -64,6 +78,8 @@ export default function AppInner() {
   const [numDays, setNumDays] = useState(1)
   const [startTime, setStartTime] = useState('08:00')
   const [endTime, setEndTime] = useState('18:00')
+  const [maxParcels, setMaxParcels] = useState('')
+  const [maxVolume, setMaxVolume] = useState('')
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState('')
   const [error, setError] = useState(null)
@@ -102,6 +118,14 @@ export default function AppInner() {
     return session?.access_token || null
   }
 
+  const togglePriority = (jobId) => {
+    setAllJobs(prev => prev.map(j => {
+      if (j.id !== jobId) return j
+      const next = PRIORITY_CYCLE[j.priority || 'medium']
+      return { ...j, priority: next }
+    }))
+  }
+
   const handleOptimize = async () => {
     if (!pickingFile && !deliveryFile) return setError(T.errorFile)
     if (!depot) return setError(T.errorDepot)
@@ -111,10 +135,25 @@ export default function AppInner() {
       const formData = new FormData()
       if (pickingFile) formData.append('picking', pickingFile)
       if (deliveryFile) formData.append('delivery', deliveryFile)
+
+      const truckCapacity = {}
+      if (maxParcels && parseInt(maxParcels) > 0) truckCapacity.maxParcels = parseInt(maxParcels)
+      if (maxVolume && parseFloat(maxVolume) > 0) truckCapacity.maxVolumeM3 = parseFloat(maxVolume)
+
+      // Collecter les priorités définies par l'utilisateur
+      const jobPriorities = {}
+      allJobs.forEach(j => {
+        if (j.priority && j.priority !== 'medium') {
+          jobPriorities[j.id] = j.priority
+        }
+      })
+
       formData.append('config', JSON.stringify({
         depotAddress: depot, numTrucks, numDays, startTime, endTime,
         sessionDate: new Date().toISOString().slice(0, 10),
         selectedIds: selectedIds.length > 0 ? selectedIds : null,
+        truckCapacity: Object.keys(truckCapacity).length > 0 ? truckCapacity : null,
+        jobPriorities,
       }))
       const res = await fetch('/api/optimize', {
         method: 'POST', body: formData,
@@ -155,6 +194,9 @@ export default function AppInner() {
           Type: s.type === 'picking' ? (lang === 'fr' ? 'Ramasse' : 'Pickup') : (lang === 'fr' ? 'Livraison' : 'Delivery'),
           Owner: s.owner_name,
           [lang === 'fr' ? 'Adresse' : 'Address']: s.address,
+          [lang === 'fr' ? 'Colis' : 'Parcels']: s.parcels || 0,
+          [lang === 'fr' ? 'Volume m³' : 'Volume m³']: s.volumeM3 || 0,
+          [lang === 'fr' ? 'Temps sur place' : 'Service time']: s.serviceTime || '',
           [lang === 'fr' ? 'Arrivée' : 'Arrival']: s.arrivalTime,
           [lang === 'fr' ? 'Départ' : 'Departure']: s.departureTime,
         }))
@@ -186,12 +228,13 @@ export default function AppInner() {
         ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
       `}</style>
       <div style={{display:'flex',flexDirection:'column',height:'100vh'}}>
+        {/* ─── Top bar ─── */}
         <div style={{background:'var(--white)',borderBottom:'1px solid var(--border)',padding:'10px 20px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-         <div style={{display:'flex',alignItems:'center',gap:7,marginRight:4}}>
-  <span style={{fontSize:14,fontWeight:700}}>
-    <span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span>
-  </span>
-</div>
+          <div style={{display:'flex',alignItems:'center',gap:7,marginRight:4}}>
+            <span style={{fontSize:14,fontWeight:700}}>
+              <span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span>
+            </span>
+          </div>
           <button onClick={() => setLang(l => l === 'fr' ? 'en' : 'fr')}
             style={{padding:'4px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,fontWeight:700,color:'var(--navy)',background:'var(--bg)',cursor:'pointer'}}>
             {lang === 'fr' ? '🇬🇧 EN' : '🇫🇷 FR'}
@@ -214,6 +257,15 @@ export default function AppInner() {
             <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
               style={{padding:'6px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:12,outline:'none'}}/>
           </Param>
+          <div style={{width:1,height:22,background:'var(--border)'}}/>
+          <Param label={T.maxParcels}>
+            <input value={maxParcels} onChange={e => setMaxParcels(e.target.value.replace(/[^0-9]/g,''))} placeholder="∞"
+              style={{width:48,padding:'6px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:12,color:'var(--text)',outline:'none',textAlign:'center'}}/>
+          </Param>
+          <Param label={T.maxVolume}>
+            <input value={maxVolume} onChange={e => setMaxVolume(e.target.value.replace(/[^0-9.,]/g,'').replace(',','.'))} placeholder="∞"
+              style={{width:48,padding:'6px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:12,color:'var(--text)',outline:'none',textAlign:'center'}}/>
+          </Param>
           <button onClick={handleOptimize} disabled={loading || (!pickingFile && !deliveryFile)}
             style={{marginLeft:'auto',padding:'8px 18px',background:loading||(!pickingFile&&!deliveryFile)?'var(--border)':'var(--navy)',color:loading||(!pickingFile&&!deliveryFile)?'var(--muted)':'#fff',fontSize:13,fontWeight:600,border:'none',borderRadius:8,cursor:'pointer',whiteSpace:'nowrap'}}>
             {loading ? T.optimizing : selectedIds.length > 0 ? T.optimizeSel.replace('{n}', selectedIds.length) : T.optimizeAll}
@@ -225,8 +277,11 @@ export default function AppInner() {
             {T.logout}
           </button>
         </div>
+
         {error && <div style={{background:'#FEF2F2',borderBottom:'1px solid #FECACA',padding:'8px 20px',fontSize:12,color:'var(--danger)'}}>⚠️ {error}</div>}
+
         <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+          {/* ─── Map ─── */}
           <div style={{flex:1,position:'relative',overflow:'hidden',background:'#E8EDF5'}}>
             {allJobs.length === 0 ? (
               <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:10,color:'var(--muted)'}}>
@@ -260,8 +315,10 @@ export default function AppInner() {
               </div>
             )}
           </div>
+
+          {/* ─── Side panel ─── */}
           {allJobs.length > 0 && (
-            <div style={{width:340,background:'var(--white)',borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <div style={{width:360,background:'var(--white)',borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
               <div style={{display:'flex',borderBottom:'1px solid var(--border)'}}>
                 {['jobs','planning'].map(tab => (
                   <button key={tab} onClick={() => setActiveTab(tab)}
@@ -270,12 +327,39 @@ export default function AppInner() {
                   </button>
                 ))}
               </div>
+
               {activeTab === 'jobs' && (
                 <>
                   <div style={{flex:1,overflowY:'auto',padding:10}}>
-                    {todoJobs.length > 0 && <><SectionLabel>{T.todoSection} — {todoJobs.length}</SectionLabel>{todoJobs.map(job => <JobItem key={job.id} job={job} selected={selectedIds.includes(job.id)} onSelect={() => toggleSelect(job.id)} onStatus={s => updateStatus(job.id, s)} T={T}/>)}</>}
-                    {doneJobs.length > 0 && <><SectionLabel mt>{T.doneSection} — {doneJobs.length}</SectionLabel>{doneJobs.map(job => <JobItem key={job.id} job={job} onStatus={s => updateStatus(job.id, s)} T={T}/>)}</>}
-                    {ecarteJobs.length > 0 && <><SectionLabel mt>{T.ecarteSection} — {ecarteJobs.length}</SectionLabel>{ecarteJobs.map(job => <JobItem key={job.id} job={job} onStatus={s => updateStatus(job.id, s)} T={T}/>)}</>}
+                    {todoJobs.length > 0 && <>
+                      <SectionLabel>{T.todoSection} — {todoJobs.length}</SectionLabel>
+                      {todoJobs.map(job => (
+                        <JobItem key={job.id} job={job} lang={lang}
+                          selected={selectedIds.includes(job.id)}
+                          onSelect={() => toggleSelect(job.id)}
+                          onStatus={s => updateStatus(job.id, s)}
+                          onTogglePriority={() => togglePriority(job.id)}
+                          T={T}/>
+                      ))}
+                    </>}
+                    {doneJobs.length > 0 && <>
+                      <SectionLabel mt>{T.doneSection} — {doneJobs.length}</SectionLabel>
+                      {doneJobs.map(job => (
+                        <JobItem key={job.id} job={job} lang={lang}
+                          onStatus={s => updateStatus(job.id, s)}
+                          onTogglePriority={() => togglePriority(job.id)}
+                          T={T}/>
+                      ))}
+                    </>}
+                    {ecarteJobs.length > 0 && <>
+                      <SectionLabel mt>{T.ecarteSection} — {ecarteJobs.length}</SectionLabel>
+                      {ecarteJobs.map(job => (
+                        <JobItem key={job.id} job={job} lang={lang}
+                          onStatus={s => updateStatus(job.id, s)}
+                          onTogglePriority={() => togglePriority(job.id)}
+                          T={T}/>
+                      ))}
+                    </>}
                   </div>
                   <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',display:'flex',gap:8}}>
                     <button onClick={selectAll} style={{flex:1,padding:'9px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,fontSize:12,fontWeight:600,color:'var(--navy)',cursor:'pointer'}}>{T.selectAll}</button>
@@ -285,12 +369,13 @@ export default function AppInner() {
                   </div>
                 </>
               )}
+
               {activeTab === 'planning' && (
                 <>
                   <div style={{flex:1,overflowY:'auto',padding:10}}>
                     {plan.length === 0
                       ? <div style={{textAlign:'center',color:'var(--muted)',fontSize:12,marginTop:40}}>{T.launchOptim}</div>
-                      : plan.map(day => <DayBlock key={day.day} day={day} colors={COLORS} onHover={setHighlightTruck} T={T}/>)
+                      : plan.map(day => <DayBlock key={day.day} day={day} colors={COLORS} onHover={setHighlightTruck} T={T} lang={lang}/>)
                     }
                   </div>
                   <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',display:'flex',gap:8}}>
@@ -307,8 +392,14 @@ export default function AppInner() {
   )
 }
 
-function JobItem({ job, selected, onSelect, onStatus, T }) {
+/* ─── Job item with priority toggle ─── */
+
+function JobItem({ job, selected, onSelect, onStatus, onTogglePriority, T, lang }) {
   const [open, setOpen] = useState(false)
+  const prio = job.priority || 'medium'
+  const prioLabel = PRIORITY_LABELS[lang]?.[prio] || prio
+  const hasMeta = (job.parcels && job.parcels > 0) || (job.volumeM3 && job.volumeM3 > 0)
+
   return (
     <div style={{position:'relative',marginBottom:3}}>
       <div onClick={() => job.status === 'todo' && onSelect ? onSelect() : setOpen(!open)}
@@ -317,7 +408,19 @@ function JobItem({ job, selected, onSelect, onStatus, T }) {
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:12,fontWeight:600,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.owner_name||job.address}</div>
           <div style={{fontSize:10,color:'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.address}</div>
+          {hasMeta && (
+            <div style={{display:'flex',gap:8,marginTop:2}}>
+              {job.parcels > 0 && <span style={{fontSize:9,color:'var(--muted)'}}>{job.parcels} {T.parcels}</span>}
+              {job.volumeM3 > 0 && <span style={{fontSize:9,color:'var(--muted)'}}>{job.volumeM3} {T.volume}</span>}
+            </div>
+          )}
         </div>
+        {/* Priority badge — click to cycle */}
+        <span onClick={e => { e.stopPropagation(); onTogglePriority() }}
+          title={prioLabel}
+          style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:5,background:PRIORITY_BG[prio],color:PRIORITY_COLORS[prio],cursor:'pointer',flexShrink:0,userSelect:'none',transition:'all 0.15s'}}>
+          {prio === 'high' ? '▲' : prio === 'low' ? '▼' : '●'} {prioLabel}
+        </span>
         <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:5,background:STATUS_BG[job.status],color:STATUS_COLORS[job.status],flexShrink:0}}>
           {job.status==='todo'?(selected?T.selected:T.statusTodo):job.status==='done'?T.statusDone:T.statusEcarte}
         </span>
@@ -334,7 +437,9 @@ function JobItem({ job, selected, onSelect, onStatus, T }) {
   )
 }
 
-function DayBlock({ day, colors, onHover, T }) {
+/* ─── Day block in planning with capacity info ─── */
+
+function DayBlock({ day, colors, onHover, T, lang }) {
   return (
     <div style={{marginBottom:14}}>
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:'var(--bg)',borderRadius:8,marginBottom:6}}>
@@ -343,15 +448,24 @@ function DayBlock({ day, colors, onHover, T }) {
       </div>
       {day.trucks.map((truck,ti) => (
         <div key={truck.truckId} style={{marginBottom:6,paddingLeft:4}} onMouseEnter={()=>onHover(truck.truckId)} onMouseLeave={()=>onHover(null)}>
-          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,flexWrap:'wrap'}}>
             <div style={{width:7,height:7,borderRadius:'50%',background:colors[ti%colors.length]}}/>
             <span style={{fontSize:11,fontWeight:600,color:'var(--navy)'}}>{T.truck} {truck.truckId}</span>
-            <span style={{fontSize:10,color:'var(--muted)',marginLeft:'auto'}}>{truck.totalDistance} {T.km} · {T.return} {truck.returnTime}</span>
+            <span style={{fontSize:10,color:'var(--muted)',marginLeft:'auto'}}>
+              {truck.totalDistance} {T.km} · {T.return} {truck.returnTime}
+            </span>
           </div>
+          {(truck.totalParcels > 0 || truck.totalVolumeM3 > 0) && (
+            <div style={{display:'flex',gap:10,paddingLeft:14,marginBottom:4}}>
+              {truck.totalParcels > 0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📦 {truck.totalParcels} {T.parcels}</span>}
+              {truck.totalVolumeM3 > 0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📐 {truck.totalVolumeM3} {T.volume}</span>}
+            </div>
+          )}
           {truck.stops.map((stop,si) => (
             <div key={si} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px 5px 14px',borderRadius:6,marginBottom:2,borderLeft:'2px solid '+colors[ti%colors.length],background:colors[ti%colors.length]+'10'}}>
               <span style={{fontSize:10,fontWeight:600,color:colors[ti%colors.length],minWidth:38}}>{stop.arrivalTime}</span>
               <span style={{flex:1,fontSize:11,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{stop.owner_name||stop.address}</span>
+              {stop.parcels > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{stop.parcels}📦</span>}
               <span style={{fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:4,background:stop.type==='picking'?'#FEF3C7':'var(--blue-soft)',color:stop.type==='picking'?'#B45309':'var(--blue)'}}>
                 {stop.type === 'picking' ? 'P' : 'D'}
               </span>
