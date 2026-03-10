@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Head from 'next/head'
 import * as XLSX from 'xlsx'
-import { haversine, travelTime, formatTime, computeServiceTime } from '../lib/vrp'
+import { haversine, travelTime, formatTime, computeServiceTime, checkNeedsTwoDrivers } from '../lib/vrp'
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxamVuaHBhb2h3dW5qdmdtbHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTM1MTYsImV4cCI6MjA4Nzk4OTUxNn0.-81H9_nbaNJitTCJmVAJxE_l3FIio3algjCJGjovUcs'
 
@@ -112,6 +112,7 @@ export default function AppInner() {
   const [mergeModal, setMergeModal] = useState(null)
   const [planDragOver, setPlanDragOver] = useState(null)
   const [needsRefresh, setNeedsRefresh] = useState(false)
+  const [showRoutes, setShowRoutes] = useState(false)
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
@@ -214,7 +215,7 @@ export default function AppInner() {
       if (stop.timeFrom != null && arrival < stop.timeFrom) { waitTime = stop.timeFrom - arrival; arrival = stop.timeFrom }
       const svcTime = computeServiceTime(stop)
       const lateBy = (stop.timeTo != null && arrival > stop.timeTo) ? Math.round(arrival - stop.timeTo) : 0
-      detailed.push({ ...stop, serviceTime:svcTime, arrivalTime:formatTime(arrival), departureTime:formatTime(arrival+svcTime), waitTime:Math.round(waitTime), lateBy })
+      detailed.push({ ...stop, serviceTime:svcTime, arrivalTime:formatTime(arrival), departureTime:formatTime(arrival+svcTime), waitTime:Math.round(waitTime), lateBy, needsTwoDrivers:checkNeedsTwoDrivers(stop) })
       totalDist += haversine(prev, stop); totalWait += waitTime; time = arrival + svcTime; prev = stop
       totalParcels += stop.parcels || 0; totalVolumeM3 += stop.volumeM3 || 0
     }
@@ -312,6 +313,22 @@ export default function AppInner() {
         failedStrict.forEach(j => { j.status = 'pending' })
         setAlert(T.alertImpossible + ' (' + failedStrict.length + ' job' + (failedStrict.length > 1 ? 's' : '') + ')')
         setTimeout(() => setAlert(null), 6000)
+      }
+
+      // Check for 2 drivers needed
+      const twoDriverStops = []
+      data.plan.forEach(d => d.trucks.forEach(t => t.stops.forEach(s => {
+        if (s.needsTwoDrivers || (s.orderVolumes && s.orderVolumes.some(v => v >= 1.5))) {
+          twoDriverStops.push(s.owner_name || s.address)
+        }
+      })))
+      if (twoDriverStops.length > 0) {
+        const names = twoDriverStops.slice(0, 3).join(', ')
+        const alertMsg = lang === 'fr'
+          ? `🚛🚛 Attention : ${twoDriverStops.length} stop(s) nécessitent 2 chauffeurs (order ≥ 1.5m³) : ${names}${twoDriverStops.length > 3 ? '...' : ''}`
+          : `🚛🚛 Warning: ${twoDriverStops.length} stop(s) need 2 drivers (order ≥ 1.5m³): ${names}${twoDriverStops.length > 3 ? '...' : ''}`
+        setAlert(prev => prev ? prev + '\n' + alertMsg : alertMsg)
+        setTimeout(() => setAlert(null), 8000)
       }
 
       setAllJobs(mergedJobs); setPlan(data.plan); setDepotCoords(data.depot); setActiveTab('planning'); setNeedsRefresh(false)
@@ -445,7 +462,15 @@ export default function AppInner() {
                 {loading && <div style={{fontSize:12,color:'var(--blue)',marginTop:8}}>{progress}</div>}
               </div>
             ) : (
-              <MapView jobs={allJobs} routes={allRoutesFlat} depot={depotCoords} highlightTruck={highlightTruck} onStatusChange={updateStatus} onSelect={id => selectForRoute(id)} selectedIds={todoJobs.map(j=>j.id)} lang={lang}/>
+              <MapView jobs={allJobs} routes={allRoutesFlat} depot={depotCoords} highlightTruck={highlightTruck} onStatusChange={updateStatus} onSelect={id => selectForRoute(id)} selectedIds={todoJobs.map(j=>j.id)} lang={lang} showRoutes={showRoutes}/>
+            )}
+            {allJobs.length > 0 && (
+              <div style={{position:'absolute',top:12,left:12,display:'flex',gap:6}}>
+                <button onClick={() => setShowRoutes(r => !r)}
+                  style={{background:'var(--white)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 12px',fontSize:11,fontWeight:600,color:showRoutes?'var(--navy)':'var(--muted)',boxShadow:'0 1px 4px rgba(0,0,0,0.06)',cursor:'pointer'}}>
+                  {showRoutes ? (lang==='fr'?'🗺 Masquer routes':'🗺 Hide routes') : (lang==='fr'?'🗺 Afficher routes':'🗺 Show routes')}
+                </button>
+              </div>
             )}
             {allJobs.length > 0 && (
               <div style={{position:'absolute',top:12,right:12,display:'flex',gap:8}}>
@@ -692,6 +717,9 @@ function DayBlock({ day, dayIdx, colors, onHover, T, lang, onPlanDragStart, onPl
                   </div>
                 </div>
                 {stop.parcels>0 && <span style={{fontSize:8,color:'var(--muted)'}}>{stop.parcels}📦</span>}
+                {(stop.needsTwoDrivers || (stop.orderVolumes && stop.orderVolumes.some(v => v >= 1.5))) && (
+                  <span style={{fontSize:10,flexShrink:0}} title="2 drivers needed">⚠️💪</span>
+                )}
                 <span style={{fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:4,background:stop.type==='picking'?'#FEF3C7':'var(--blue-soft)',color:stop.type==='picking'?'#B45309':'var(--blue)'}}>{stop.type==='picking'?'P':'D'}</span>
               </div>
             ))}
