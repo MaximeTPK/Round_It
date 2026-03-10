@@ -79,6 +79,13 @@ export default async function handler(req, res) {
       userId = user?.id || null
     }
 
+    // Stocker les orderVolumes par order_id (pas en base, juste en mémoire)
+    const orderVolumesMap = {}
+    newStops.forEach(stop => {
+      const orderId = stop.orders?.[0] || stop.address
+      orderVolumesMap[orderId] = stop.orderVolumes || []
+    })
+
     // Construire les jobs pour Supabase (noms de colonnes = snake_case)
     const allJobs = newStops.map(stop => {
       const orderId = stop.orders?.[0] || stop.address
@@ -114,12 +121,12 @@ export default async function handler(req, res) {
 
     const jobs = (savedJobs || allJobs).map(j => ({
       ...j,
-      // Normaliser pour le front : toujours renvoyer lon + volumeM3 + timeFrom/timeTo
       lon: j.lon || j.lng || null,
       volumeM3: j.volume_m3 || j.volumeM3 || 0,
       timeFrom: j.time_from ?? j.timeFrom ?? null,
       timeTo: j.time_to ?? j.timeTo ?? null,
       timeStrict: j.time_strict ?? j.timeStrict ?? false,
+      orderVolumes: orderVolumesMap[j.order_id] || [],
     }))
 
     const jobsToOptimize = jobs.filter(j => {
