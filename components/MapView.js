@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 
-
 const COLORS = ['#2563EB', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C', '#15803D', '#C2410C']
 const STATUS_COLORS = { todo: '#2563EB', done: '#059669', ecarte: '#D97706' }
 const REGISTRY = {}
