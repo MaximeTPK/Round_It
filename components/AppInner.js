@@ -112,7 +112,7 @@ export default function AppInner() {
   const [mergeModal, setMergeModal] = useState(null)
   const [planDragOver, setPlanDragOver] = useState(null)
   const [needsRefresh, setNeedsRefresh] = useState(false)
-  const [showRoutes, setShowRoutes] = useState(false)
+  const [showRoutes, setShowRoutes] = useState(true)
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
