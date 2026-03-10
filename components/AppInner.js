@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Head from 'next/head'
 import * as XLSX from 'xlsx'
+import { haversine, travelTime, formatTime, computeServiceTime } from '../lib/vrp'
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxamVuaHBhb2h3dW5qdmdtbHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTM1MTYsImV4cCI6MjA4Nzk4OTUxNn0.-81H9_nbaNJitTCJmVAJxE_l3FIio3algjCJGjovUcs'
 
@@ -105,9 +106,101 @@ export default function AppInner() {
   const [userEmail, setUserEmail] = useState(null)
   const [dragOverZone, setDragOverZone] = useState(null)
   const [mergeModal, setMergeModal] = useState(null) // { type: 'picking'|'delivery', file: File }
+  const [planDragOver, setPlanDragOver] = useState(null) // { dayIdx, truckIdx }
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
+
+  // ─── Recalcul des horaires d'une tournée après drag & drop ───
+  const recalcTruck = (stops, depot, startMin) => {
+    let time = startMin
+    let totalDist = 0
+    let prev = depot
+    let totalParcels = 0
+    let totalVolumeM3 = 0
+    const detailed = []
+    for (const stop of stops) {
+      const travel = travelTime(prev, stop)
+      const arrival = time + travel
+      const svcTime = computeServiceTime(stop)
+      detailed.push({ ...stop, serviceTime: svcTime, arrivalTime: formatTime(arrival), departureTime: formatTime(arrival + svcTime) })
+      totalDist += haversine(prev, stop)
+      time = arrival + svcTime
+      prev = stop
+      totalParcels += stop.parcels || 0
+      totalVolumeM3 += stop.volumeM3 || 0
+    }
+    const returnDist = haversine(prev, depot)
+    const returnTravel = travelTime(prev, depot)
+    return {
+      stops: detailed,
+      totalDistance: Math.round((totalDist + returnDist) * 10) / 10,
+      totalDuration: Math.round(time - startMin + returnTravel),
+      returnTime: formatTime(time + returnTravel),
+      totalParcels,
+      totalVolumeM3: Math.round(totalVolumeM3 * 100) / 100,
+    }
+  }
+
+  // ─── Planning drag & drop handlers ───
+  const handlePlanDragStart = (e, dayIdx, truckIdx, stopIdx) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify({ dayIdx, truckIdx, stopIdx }))
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handlePlanDragOver = (e, dayIdx, truckIdx) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setPlanDragOver({ dayIdx, truckIdx })
+  }
+
+  const handlePlanDragLeave = () => {
+    setPlanDragOver(null)
+  }
+
+  const handlePlanDrop = (e, targetDayIdx, targetTruckIdx, targetStopIdx) => {
+    e.preventDefault()
+    setPlanDragOver(null)
+    let source
+    try { source = JSON.parse(e.dataTransfer.getData('text/plain')) } catch { return }
+    if (!source || source.dayIdx === undefined) return
+
+    const { dayIdx: srcDayIdx, truckIdx: srcTruckIdx, stopIdx: srcStopIdx } = source
+    if (srcDayIdx !== targetDayIdx) return // On ne déplace pas entre jours pour simplifier
+
+    const [sh, sm] = startTime.split(':').map(Number)
+    const startMin = sh * 60 + (sm || 0)
+    const depot = depotCoords
+
+    setPlan(prev => {
+      const newPlan = JSON.parse(JSON.stringify(prev))
+      const srcTruck = newPlan[srcDayIdx].trucks[srcTruckIdx]
+      const tgtTruck = newPlan[targetDayIdx].trucks[targetTruckIdx]
+
+      // Retirer le stop de la source
+      const [movedStop] = srcTruck.stops.splice(srcStopIdx, 1)
+
+      // Insérer dans la cible
+      const insertIdx = targetStopIdx !== undefined ? targetStopIdx : tgtTruck.stops.length
+      tgtTruck.stops.splice(insertIdx, 0, movedStop)
+
+      // Recalculer les horaires des camions impactés
+      if (depot) {
+        const srcStats = recalcTruck(srcTruck.stops, depot, startMin)
+        Object.assign(srcTruck, srcStats)
+
+        if (srcTruckIdx !== targetTruckIdx) {
+          const tgtStats = recalcTruck(tgtTruck.stops, depot, startMin)
+          Object.assign(tgtTruck, tgtStats)
+        }
+      }
+
+      // Supprimer les camions vides
+      newPlan[srcDayIdx].trucks = newPlan[srcDayIdx].trucks.filter(t => t.stops.length > 0)
+
+      return newPlan
+    })
+  }
 
   useEffect(() => {
     const savedDepot = localStorage.getItem(DEPOT_KEY)
@@ -517,7 +610,8 @@ export default function AppInner() {
                   <div style={{flex:1,overflowY:'auto',padding:10}}>
                     {plan.length === 0
                       ? <div style={{textAlign:'center',color:'var(--muted)',fontSize:12,marginTop:40}}>{T.launchOptim}</div>
-                      : plan.map(day => <DayBlock key={day.day} day={day} colors={COLORS} onHover={setHighlightTruck} T={T} lang={lang}/>)
+                      : plan.map((day, dayIdx) => <DayBlock key={day.day} day={day} dayIdx={dayIdx} colors={COLORS} onHover={setHighlightTruck} T={T} lang={lang}
+                          onPlanDragStart={handlePlanDragStart} onPlanDragOver={handlePlanDragOver} onPlanDragLeave={handlePlanDragLeave} onPlanDrop={handlePlanDrop} planDragOver={planDragOver}/>)
                     }
                   </div>
                   <div style={{padding:'10px 12px',borderTop:'1px solid var(--border)',display:'flex',gap:8}}>
@@ -579,42 +673,62 @@ function JobItem({ job, selected, onSelect, onStatus, onDragStart, T, lang }) {
   )
 }
 
-/* ─── Day block ─── */
+/* ─── Day block with drag & drop ─── */
 
-function DayBlock({ day, colors, onHover, T, lang }) {
+function DayBlock({ day, dayIdx, colors, onHover, T, lang, onPlanDragStart, onPlanDragOver, onPlanDragLeave, onPlanDrop, planDragOver }) {
   return (
     <div style={{marginBottom:14}}>
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:'var(--bg)',borderRadius:8,marginBottom:6}}>
         <span style={{fontSize:12,fontWeight:700,color:'var(--navy)',flex:1}}>{T.day} {day.day}</span>
         <span style={{fontSize:10,color:'var(--muted)'}}>{day.trucks.reduce((s,t)=>s+t.stops.length,0)} {T.stops}</span>
       </div>
-      {day.trucks.map((truck,ti) => (
-        <div key={truck.truckId} style={{marginBottom:6,paddingLeft:4}} onMouseEnter={()=>onHover(truck.truckId)} onMouseLeave={()=>onHover(null)}>
-          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,flexWrap:'wrap'}}>
-            <div style={{width:7,height:7,borderRadius:'50%',background:colors[ti%colors.length]}}/>
-            <span style={{fontSize:11,fontWeight:600,color:'var(--navy)'}}>{T.truck} {truck.truckId}</span>
-            <span style={{fontSize:10,color:'var(--muted)',marginLeft:'auto'}}>
-              {truck.totalDistance} {T.km} · {T.return} {truck.returnTime}
-            </span>
-          </div>
-          {(truck.totalParcels > 0 || truck.totalVolumeM3 > 0) && (
-            <div style={{display:'flex',gap:10,paddingLeft:14,marginBottom:4}}>
-              {truck.totalParcels > 0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📦 {truck.totalParcels} {T.parcels}</span>}
-              {truck.totalVolumeM3 > 0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📐 {truck.totalVolumeM3} {T.volume}</span>}
-            </div>
-          )}
-          {truck.stops.map((stop,si) => (
-            <div key={si} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px 5px 14px',borderRadius:6,marginBottom:2,borderLeft:'2px solid '+colors[ti%colors.length],background:colors[ti%colors.length]+'10'}}>
-              <span style={{fontSize:10,fontWeight:600,color:colors[ti%colors.length],minWidth:38}}>{stop.arrivalTime}</span>
-              <span style={{flex:1,fontSize:11,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{stop.owner_name||stop.address}</span>
-              {stop.parcels > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{stop.parcels}📦</span>}
-              <span style={{fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:4,background:stop.type==='picking'?'#FEF3C7':'var(--blue-soft)',color:stop.type==='picking'?'#B45309':'var(--blue)'}}>
-                {stop.type === 'picking' ? 'P' : 'D'}
+      {day.trucks.map((truck,ti) => {
+        const isOverThisTruck = planDragOver && planDragOver.dayIdx === dayIdx && planDragOver.truckIdx === ti
+        return (
+          <div key={truck.truckId}
+            style={{marginBottom:6,paddingLeft:4,borderRadius:8,border:isOverThisTruck?'1.5px dashed var(--navy)':'1.5px dashed transparent',background:isOverThisTruck?'var(--blue-soft)':'transparent',transition:'all 0.15s'}}
+            onMouseEnter={()=>onHover(truck.truckId)} onMouseLeave={()=>onHover(null)}
+            onDragOver={e => onPlanDragOver(e, dayIdx, ti)}
+            onDragLeave={onPlanDragLeave}
+            onDrop={e => onPlanDrop(e, dayIdx, ti)}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,flexWrap:'wrap',padding:'4px 4px 0'}}>
+              <div style={{width:7,height:7,borderRadius:'50%',background:colors[ti%colors.length]}}/>
+              <span style={{fontSize:11,fontWeight:600,color:'var(--navy)'}}>{T.truck} {truck.truckId}</span>
+              <span style={{fontSize:10,color:'var(--muted)',marginLeft:'auto'}}>
+                {truck.totalDistance} {T.km} · {T.return} {truck.returnTime}
               </span>
             </div>
-          ))}
-        </div>
-      ))}
+            {(truck.totalParcels > 0 || truck.totalVolumeM3 > 0) && (
+              <div style={{display:'flex',gap:10,paddingLeft:14,marginBottom:4}}>
+                {truck.totalParcels > 0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📦 {truck.totalParcels} {T.parcels}</span>}
+                {truck.totalVolumeM3 > 0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📐 {truck.totalVolumeM3} {T.volume}</span>}
+              </div>
+            )}
+            {truck.stops.map((stop,si) => (
+              <div key={si}
+                draggable
+                onDragStart={e => onPlanDragStart(e, dayIdx, ti, si)}
+                onDrop={e => { e.stopPropagation(); onPlanDrop(e, dayIdx, ti, si) }}
+                onDragOver={e => { e.preventDefault(); e.stopPropagation() }}
+                className="drag-item"
+                style={{display:'flex',alignItems:'center',gap:8,padding:'5px 10px 5px 14px',borderRadius:6,marginBottom:2,borderLeft:'2px solid '+colors[ti%colors.length],background:colors[ti%colors.length]+'10',cursor:'grab'}}>
+                <span style={{fontSize:9,color:'var(--muted)',cursor:'grab',flexShrink:0,userSelect:'none'}}>⠿</span>
+                <span style={{fontSize:10,fontWeight:600,color:colors[ti%colors.length],minWidth:38}}>{stop.arrivalTime}</span>
+                <span style={{flex:1,fontSize:11,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{stop.owner_name||stop.address}</span>
+                {stop.parcels > 0 && <span style={{fontSize:8,color:'var(--muted)'}}>{stop.parcels}📦</span>}
+                <span style={{fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:4,background:stop.type==='picking'?'#FEF3C7':'var(--blue-soft)',color:stop.type==='picking'?'#B45309':'var(--blue)'}}>
+                  {stop.type === 'picking' ? 'P' : 'D'}
+                </span>
+              </div>
+            ))}
+            {truck.stops.length === 0 && (
+              <div style={{fontSize:10,color:'var(--muted)',textAlign:'center',padding:'8px 0',opacity:0.6}}>
+                {lang === 'fr' ? 'Déposez ici' : 'Drop here'}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
