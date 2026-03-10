@@ -95,6 +95,9 @@ export default async function handler(req, res) {
         orders: stop.orders,
         parcels: stop.parcels || 0,
         volume_m3: stop.volumeM3 || 0,
+        time_from: stop.timeFrom ?? null,
+        time_to: stop.timeTo ?? null,
+        time_strict: stop.timeStrict ?? false,
         session_date: sessionDate,
         user_id: userId,
       }
@@ -111,9 +114,12 @@ export default async function handler(req, res) {
 
     const jobs = (savedJobs || allJobs).map(j => ({
       ...j,
-      // Normaliser pour le front : toujours renvoyer lon + volumeM3
+      // Normaliser pour le front : toujours renvoyer lon + volumeM3 + timeFrom/timeTo
       lon: j.lon || j.lng || null,
       volumeM3: j.volume_m3 || j.volumeM3 || 0,
+      timeFrom: j.time_from ?? j.timeFrom ?? null,
+      timeTo: j.time_to ?? j.timeTo ?? null,
+      timeStrict: j.time_strict ?? j.timeStrict ?? false,
     }))
 
     const jobsToOptimize = jobs.filter(j => {
