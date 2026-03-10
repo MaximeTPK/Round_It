@@ -48,6 +48,11 @@ const I18N = {
     maxParcels: 'Max colis', maxVolume: 'Max m³',
     parcels: 'colis', volume: 'm³', serviceTime: 'min',
     capacity: 'Capacité', dragHint: 'Glissez les jobs entre les zones',
+    importTitle: 'Import CSV', importMsg: 'Des jobs existent déjà. Que souhaitez-vous faire ?',
+    importAdd: '+ Ajouter', importReplace: '↻ Remplacer tout', importCancel: 'Annuler',
+    importAddDesc: 'Les nouveaux jobs seront ajoutés (doublons ignorés)',
+    importReplaceDesc: 'Tous les jobs actuels seront supprimés',
+    reset: 'Reset',
   },
   en: {
     brand: 'RoundIT', pickingCsv: 'Picking CSV', deliveryCsv: 'Delivery CSV',
@@ -66,6 +71,11 @@ const I18N = {
     maxParcels: 'Max parcels', maxVolume: 'Max m³',
     parcels: 'parcels', volume: 'm³', serviceTime: 'min',
     capacity: 'Capacity', dragHint: 'Drag jobs between zones',
+    importTitle: 'CSV Import', importMsg: 'Jobs already exist. What would you like to do?',
+    importAdd: '+ Add', importReplace: '↻ Replace all', importCancel: 'Cancel',
+    importAddDesc: 'New jobs will be added (duplicates ignored)',
+    importReplaceDesc: 'All current jobs will be removed',
+    reset: 'Reset',
   }
 }
 
@@ -74,8 +84,8 @@ const STATUS_BG = { todo: '#EFF6FF', done: '#F0FDF4', ecarte: '#FFFBEB' }
 
 export default function AppInner() {
   const [lang, setLang] = useState('fr')
-  const [pickingFile, setPickingFile] = useState(null)
-  const [deliveryFile, setDeliveryFile] = useState(null)
+  const [pickingFiles, setPickingFiles] = useState([])
+  const [deliveryFiles, setDeliveryFiles] = useState([])
   const [depot, setDepot] = useState('')
   const [numTrucks, setNumTrucks] = useState(4)
   const [numDays, setNumDays] = useState(1)
@@ -94,6 +104,7 @@ export default function AppInner() {
   const [highlightTruck, setHighlightTruck] = useState(null)
   const [userEmail, setUserEmail] = useState(null)
   const [dragOverZone, setDragOverZone] = useState(null)
+  const [mergeModal, setMergeModal] = useState(null) // { type: 'picking'|'delivery', file: File }
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
@@ -122,7 +133,53 @@ export default function AppInner() {
     return session?.access_token || null
   }
 
-  // ─── Drag & drop ───
+  // ─── File import with merge/replace modal ───
+  const handleFileSelect = (file, type) => {
+    if (!file) return
+    // Si des jobs existent déjà, demander merge ou replace
+    if (allJobs.length > 0) {
+      setMergeModal({ type, file })
+    } else {
+      // Premier import → ajouter directement
+      addFile(file, type)
+    }
+  }
+
+  const addFile = (file, type) => {
+    if (type === 'picking') {
+      setPickingFiles(prev => [...prev, file])
+    } else {
+      setDeliveryFiles(prev => [...prev, file])
+    }
+  }
+
+  const handleMergeChoice = (mode) => {
+    if (!mergeModal) return
+    const { type, file } = mergeModal
+    if (mode === 'replace') {
+      // Vider tout et repartir de zéro
+      setAllJobs([])
+      setPlan([])
+      setSelectedIds([])
+      setPickingFiles([])
+      setDeliveryFiles([])
+    }
+    addFile(file, type)
+    setMergeModal(null)
+  }
+
+  const handleReset = () => {
+    setAllJobs([])
+    setPlan([])
+    setSelectedIds([])
+    setPickingFiles([])
+    setDeliveryFiles([])
+    setDepotCoords(null)
+    if (pickRef.current) pickRef.current.value = ''
+    if (delRef.current) delRef.current.value = ''
+  }
+
+  // ─── Drag & drop priority ───
   const handleDragStart = (e, jobId) => {
     e.dataTransfer.setData('text/plain', jobId)
     e.dataTransfer.effectAllowed = 'move'
@@ -149,14 +206,15 @@ export default function AppInner() {
   }
 
   const handleOptimize = async () => {
-    if (!pickingFile && !deliveryFile) return setError(T.errorFile)
+    if (pickingFiles.length === 0 && deliveryFiles.length === 0) return setError(T.errorFile)
     if (!depot) return setError(T.errorDepot)
     setLoading(true); setError(null); setProgress(T.optimizing)
     try {
       const token = await getToken()
       const formData = new FormData()
-      if (pickingFile) formData.append('picking', pickingFile)
-      if (deliveryFile) formData.append('delivery', deliveryFile)
+      // Envoyer tous les fichiers picking et delivery
+      pickingFiles.forEach(f => formData.append('picking', f))
+      deliveryFiles.forEach(f => formData.append('delivery', f))
 
       const truckCapacity = {}
       if (maxParcels && parseInt(maxParcels) > 0) truckCapacity.maxParcels = parseInt(maxParcels)
@@ -236,6 +294,7 @@ export default function AppInner() {
   const doneJobs = allJobs.filter(j => j.status === 'done')
   const ecarteJobs = allJobs.filter(j => j.status === 'ecarte')
   const allRoutesFlat = plan.flatMap(d => d.trucks)
+  const hasFiles = pickingFiles.length > 0 || deliveryFiles.length > 0
 
   return (
     <>
@@ -256,8 +315,36 @@ export default function AppInner() {
         .drop-zone-active{box-shadow:inset 0 0 0 2px var(--navy);transform:scale(1.01)}
         .drag-item{cursor:grab;transition:opacity 0.15s, transform 0.15s}
         .drag-item:active{cursor:grabbing;opacity:0.7;transform:scale(0.98)}
+        .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1000}
+        .modal-box{background:var(--white);border-radius:14px;padding:24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
       `}</style>
       <div style={{display:'flex',flexDirection:'column',height:'100vh'}}>
+        {/* ─── Merge/Replace Modal ─── */}
+        {mergeModal && (
+          <div className="modal-overlay" onClick={() => setMergeModal(null)}>
+            <div className="modal-box" onClick={e => e.stopPropagation()}>
+              <div style={{fontSize:15,fontWeight:700,color:'var(--navy)',marginBottom:4}}>{T.importTitle}</div>
+              <div style={{fontSize:12,color:'var(--muted)',marginBottom:16}}>{T.importMsg}</div>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                <button onClick={() => handleMergeChoice('add')}
+                  style={{padding:'12px 16px',background:'var(--blue-soft)',border:'1.5px solid var(--blue)',borderRadius:10,cursor:'pointer',textAlign:'left'}}>
+                  <div style={{fontSize:13,fontWeight:700,color:'var(--navy)'}}>{T.importAdd}</div>
+                  <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{T.importAddDesc}</div>
+                </button>
+                <button onClick={() => handleMergeChoice('replace')}
+                  style={{padding:'12px 16px',background:'#FEF2F2',border:'1.5px solid #FECACA',borderRadius:10,cursor:'pointer',textAlign:'left'}}>
+                  <div style={{fontSize:13,fontWeight:700,color:'var(--danger)'}}>{T.importReplace}</div>
+                  <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{T.importReplaceDesc}</div>
+                </button>
+              </div>
+              <button onClick={() => setMergeModal(null)}
+                style={{marginTop:12,width:'100%',padding:'8px',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,fontSize:12,color:'var(--muted)',cursor:'pointer',fontWeight:600}}>
+                {T.importCancel}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ─── Top bar ─── */}
         <div style={{background:'var(--white)',borderBottom:'1px solid var(--border)',padding:'10px 20px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
           <div style={{display:'flex',alignItems:'center',gap:7,marginRight:4}}>
@@ -270,8 +357,14 @@ export default function AppInner() {
             {lang === 'fr' ? '🇬🇧 EN' : '🇫🇷 FR'}
           </button>
           <div style={{width:1,height:22,background:'var(--border)'}}/>
-          <UploadZone label={T.pickingCsv} file={pickingFile} onFile={setPickingFile} inputRef={pickRef}/>
-          <UploadZone label={T.deliveryCsv} file={deliveryFile} onFile={setDeliveryFile} inputRef={delRef}/>
+          <UploadZone label={T.pickingCsv} files={pickingFiles} onFile={f => handleFileSelect(f, 'picking')} inputRef={pickRef}/>
+          <UploadZone label={T.deliveryCsv} files={deliveryFiles} onFile={f => handleFileSelect(f, 'delivery')} inputRef={delRef}/>
+          {hasFiles && (
+            <button onClick={handleReset}
+              style={{padding:'4px 8px',border:'1px solid #FECACA',borderRadius:6,fontSize:10,fontWeight:600,color:'var(--danger)',background:'#FEF2F2',cursor:'pointer'}}>
+              {T.reset}
+            </button>
+          )}
           <div style={{width:1,height:22,background:'var(--border)'}}/>
           <Param label={T.depot}>
             <input value={depot} onChange={e => saveDepot(e.target.value)} placeholder={T.depotPlaceholder}
@@ -296,8 +389,8 @@ export default function AppInner() {
             <input value={maxVolume} onChange={e => setMaxVolume(e.target.value.replace(/[^0-9.,]/g,'').replace(',','.'))} placeholder="∞"
               style={{width:48,padding:'6px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:12,color:'var(--text)',outline:'none',textAlign:'center'}}/>
           </Param>
-          <button onClick={handleOptimize} disabled={loading || (!pickingFile && !deliveryFile)}
-            style={{marginLeft:'auto',padding:'8px 18px',background:loading||(!pickingFile&&!deliveryFile)?'var(--border)':'var(--navy)',color:loading||(!pickingFile&&!deliveryFile)?'var(--muted)':'#fff',fontSize:13,fontWeight:600,border:'none',borderRadius:8,cursor:'pointer',whiteSpace:'nowrap'}}>
+          <button onClick={handleOptimize} disabled={loading || !hasFiles}
+            style={{marginLeft:'auto',padding:'8px 18px',background:loading||!hasFiles?'var(--border)':'var(--navy)',color:loading||!hasFiles?'var(--muted)':'#fff',fontSize:13,fontWeight:600,border:'none',borderRadius:8,cursor:'pointer',whiteSpace:'nowrap'}}>
             {loading ? T.optimizing : selectedIds.length > 0 ? T.optimizeSel.replace('{n}', selectedIds.length) : T.optimizeAll}
           </button>
           <div style={{width:1,height:22,background:'var(--border)'}}/>
@@ -361,7 +454,6 @@ export default function AppInner() {
               {activeTab === 'jobs' && (
                 <>
                   <div style={{flex:1,overflowY:'auto',padding:10}}>
-                    {/* ─── Drag & drop priority zones ─── */}
                     {todoJobs.length > 0 && (
                       <>
                         <div style={{fontSize:9,color:'var(--muted)',textAlign:'center',marginBottom:6,fontWeight:500}}>{T.dragHint}</div>
@@ -374,15 +466,8 @@ export default function AppInner() {
                               onDragOver={e => handleDragOver(e, zone.key)}
                               onDragLeave={handleDragLeave}
                               onDrop={e => handleDrop(e, zone.key)}
-                              style={{
-                                marginBottom:8,
-                                borderRadius:10,
-                                border:'1.5px dashed ' + (isOver ? 'var(--navy)' : zone.border),
-                                background: isOver ? zone.bg : 'transparent',
-                                padding: '6px 8px',
-                                minHeight: 44,
-                              }}>
-                              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:jobsInZone.length > 0 ? 6 : 0}}>
+                              style={{marginBottom:8,borderRadius:10,border:'1.5px dashed '+(isOver?'var(--navy)':zone.border),background:isOver?zone.bg:'transparent',padding:'6px 8px',minHeight:44}}>
+                              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:jobsInZone.length>0?6:0}}>
                                 <span style={{fontSize:10,color:zone.color,fontWeight:700}}>{zone.icon}</span>
                                 <span style={{fontSize:10,fontWeight:700,color:zone.color,flex:1}}>{PRIORITY_LABELS[lang][zone.key]}</span>
                                 <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>{jobsInZone.length}</span>
@@ -405,20 +490,16 @@ export default function AppInner() {
                         })}
                       </>
                     )}
-
-                    {/* ─── Done & skipped (read only) ─── */}
                     {doneJobs.length > 0 && <>
                       <SectionLabel mt>{T.doneSection} — {doneJobs.length}</SectionLabel>
                       {doneJobs.map(job => (
-                        <JobItem key={job.id} job={job} lang={lang}
-                          onStatus={s => updateStatus(job.id, s)} T={T}/>
+                        <JobItem key={job.id} job={job} lang={lang} onStatus={s => updateStatus(job.id, s)} T={T}/>
                       ))}
                     </>}
                     {ecarteJobs.length > 0 && <>
                       <SectionLabel mt>{T.ecarteSection} — {ecarteJobs.length}</SectionLabel>
                       {ecarteJobs.map(job => (
-                        <JobItem key={job.id} job={job} lang={lang}
-                          onStatus={s => updateStatus(job.id, s)} T={T}/>
+                        <JobItem key={job.id} job={job} lang={lang} onStatus={s => updateStatus(job.id, s)} T={T}/>
                       ))}
                     </>}
                   </div>
@@ -453,7 +534,7 @@ export default function AppInner() {
   )
 }
 
-/* ─── Job item (draggable for todo jobs) ─── */
+/* ─── Job item ─── */
 
 function JobItem({ job, selected, onSelect, onStatus, onDragStart, T, lang }) {
   const [open, setOpen] = useState(false)
@@ -498,7 +579,7 @@ function JobItem({ job, selected, onSelect, onStatus, onDragStart, T, lang }) {
   )
 }
 
-/* ─── Day block in planning ─── */
+/* ─── Day block ─── */
 
 function DayBlock({ day, colors, onHover, T, lang }) {
   return (
@@ -542,13 +623,14 @@ function SectionLabel({ children, mt }) {
   return <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.06em',padding:'4px 6px',marginBottom:4,marginTop:mt?8:0}}>{children}</div>
 }
 
-function UploadZone({ label, file, onFile, inputRef }) {
+function UploadZone({ label, files, onFile, inputRef }) {
+  const count = files.length
   return (
     <div onClick={() => inputRef.current?.click()}
-      style={{display:'flex',alignItems:'center',gap:7,padding:'6px 12px',border:'1.5px '+(file?'solid':'dashed')+' '+(file?'var(--success)':'var(--border)'),borderRadius:8,cursor:'pointer',background:file?'var(--success-soft)':'var(--bg)',fontSize:12,fontWeight:500,color:file?'var(--success)':'var(--muted)',whiteSpace:'nowrap'}}>
-      <span>{file?'✅':'📂'}</span>
-      <span>{file?file.name:'+ '+label}</span>
-      <input ref={inputRef} type="file" accept=".csv" style={{display:'none'}} onChange={e=>onFile(e.target.files[0])}/>
+      style={{display:'flex',alignItems:'center',gap:7,padding:'6px 12px',border:'1.5px '+(count>0?'solid':'dashed')+' '+(count>0?'var(--success)':'var(--border)'),borderRadius:8,cursor:'pointer',background:count>0?'var(--success-soft)':'var(--bg)',fontSize:12,fontWeight:500,color:count>0?'var(--success)':'var(--muted)',whiteSpace:'nowrap'}}>
+      <span>{count>0?'✅':'📂'}</span>
+      <span>{count>0 ? count + ' ' + label : '+ ' + label}</span>
+      <input ref={inputRef} type="file" accept=".csv" style={{display:'none'}} onChange={e => { onFile(e.target.files[0]); e.target.value = '' }}/>
     </div>
   )
 }
