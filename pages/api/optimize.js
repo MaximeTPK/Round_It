@@ -42,9 +42,10 @@ export default async function handler(req, res) {
     const existingMap = {}
     if (existingJobs) existingJobs.forEach(j => { existingMap[j.order_id] = j })
 
-    const depotCoords = await geocode(depotAddress)
-    if (!depotCoords) return res.status(400).json({ error: 'Depot introuvable: ' + depotAddress })
-    const depot = { ...depotCoords, address: depotAddress }
+    const depotRaw = await geocode(depotAddress)
+    if (!depotRaw) return res.status(400).json({ error: 'Depot introuvable: ' + depotAddress })
+    // Normaliser : Google renvoie lng, on utilise lon partout
+    const depot = { lat: depotRaw.lat, lon: depotRaw.lng || depotRaw.lon, address: depotAddress }
 
     const stopsToGeocode = newStops.filter(s => {
       const existing = existingMap[s.orders?.[0]]
@@ -65,6 +66,7 @@ export default async function handler(req, res) {
       userId = user?.id || null
     }
 
+    // Construire les jobs pour Supabase (noms de colonnes = snake_case)
     const allJobs = newStops.map(stop => {
       const orderId = stop.orders?.[0] || stop.address
       const existing = existingMap[orderId]
@@ -76,21 +78,30 @@ export default async function handler(req, res) {
         type: stop.type,
         status: existing?.status || 'todo',
         lat: existing?.lat || geo?.lat || null,
-        lon: existing?.lon || geo?.lon || null,
+        lon: existing?.lon || geo?.lng || null,
         orders: stop.orders,
         parcels: stop.parcels || 0,
-        volumeM3: stop.volumeM3 || 0,
+        volume_m3: stop.volumeM3 || 0,
         session_date: sessionDate,
         user_id: userId,
       }
     })
 
-    const { data: savedJobs } = await supabase
+    const { data: savedJobs, error: upsertError } = await supabase
       .from('jobs')
       .upsert(allJobs, { onConflict: 'order_id,session_date' })
       .select()
 
-    const jobs = savedJobs || allJobs
+    if (upsertError) {
+      console.error('Upsert error:', upsertError)
+    }
+
+    const jobs = (savedJobs || allJobs).map(j => ({
+      ...j,
+      // Normaliser pour le front : toujours renvoyer lon + volumeM3
+      lon: j.lon || j.lng || null,
+      volumeM3: j.volume_m3 || j.volumeM3 || 0,
+    }))
 
     const jobsToOptimize = jobs.filter(j => {
       if (j.status !== 'todo') return false
@@ -99,7 +110,6 @@ export default async function handler(req, res) {
       return true
     }).map(j => ({
       ...j,
-      // Appliquer les priorités définies côté UI
       priority: jobPriorities[j.id] || j.priority || 'medium',
     }))
 
