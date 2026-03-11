@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Head from 'next/head'
 import * as XLSX from 'xlsx'
-import { haversine, travelTime, formatTime, computeServiceTime, checkNeedsTwoDrivers } from '../lib/vrp'
+import { haversine, travelTime, formatTime, computeServiceTime, checkNeedsTwoDrivers } from '../lib/solver'
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxamVuaHBhb2h3dW5qdmdtbHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTM1MTYsImV4cCI6MjA4Nzk4OTUxNn0.-81H9_nbaNJitTCJmVAJxE_l3FIio3algjCJGjovUcs'
 
