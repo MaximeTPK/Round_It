@@ -1,6 +1,6 @@
 import { parsePickingCSV, parseDeliveryCSV } from '../../lib/parser'
 import { geocodeAll, geocode } from '../../lib/geocode'
-import { solveMultiDayVRP } from '../../lib/vrp'
+import { solve } from '../../lib/solver'
 import { supabase } from '../../lib/supabase'
 
 export const config = { api: { bodyParser: false } }
@@ -29,6 +29,7 @@ export default async function handler(req, res) {
     const selectedIds = cfg.selectedIds || null
     const truckCapacity = cfg.truckCapacity || null
     const jobPriorities = cfg.jobPriorities || {}
+    const jobTimeWindows = cfg.jobTimeWindows || {}
 
     let newStops = []
     for (const part of pickingParts) {
@@ -38,7 +39,7 @@ export default async function handler(req, res) {
       newStops = [...newStops, ...parseDeliveryCSV(part.data.toString('utf-8'))]
     }
 
-    // Dédoublonnage par order_id (le premier importé gagne)
+    // Dédoublonnage par order_id
     const seen = new Set()
     newStops = newStops.filter(s => {
       const key = s.orders?.[0] || s.address
@@ -57,20 +58,16 @@ export default async function handler(req, res) {
 
     const depotRaw = await geocode(depotAddress)
     if (!depotRaw) return res.status(400).json({ error: 'Depot introuvable: ' + depotAddress })
-    // Normaliser : Google renvoie lng, on utilise lon partout
     const depot = { lat: depotRaw.lat, lon: depotRaw.lng || depotRaw.lon, address: depotAddress }
 
     const stopsToGeocode = newStops.filter(s => {
       const existing = existingMap[s.orders?.[0]]
       return !existing || !existing.lat
     })
-
-    if (stopsToGeocode.length > 0) {
-      await new Promise(r => setTimeout(r, 1100))
-    }
+    if (stopsToGeocode.length > 0) await new Promise(r => setTimeout(r, 1100))
     const geocoded = await geocodeAll(stopsToGeocode)
 
-    // Récupérer le user depuis le token
+    // Récupérer le user
     const authHeader = req.headers.authorization
     const token = authHeader?.replace('Bearer ', '')
     let userId = null
@@ -79,14 +76,14 @@ export default async function handler(req, res) {
       userId = user?.id || null
     }
 
-    // Stocker les orderVolumes par order_id (pas en base, juste en mémoire)
+    // Stocker orderVolumes
     const orderVolumesMap = {}
     newStops.forEach(stop => {
       const orderId = stop.orders?.[0] || stop.address
       orderVolumesMap[orderId] = stop.orderVolumes || []
     })
 
-    // Construire les jobs pour Supabase (noms de colonnes = snake_case)
+    // Construire les jobs pour Supabase
     const allJobs = newStops.map(stop => {
       const orderId = stop.orders?.[0] || stop.address
       const existing = existingMap[orderId]
@@ -115,10 +112,9 @@ export default async function handler(req, res) {
       .upsert(allJobs, { onConflict: 'order_id,session_date' })
       .select()
 
-    if (upsertError) {
-      console.error('Upsert error:', upsertError)
-    }
+    if (upsertError) console.error('Upsert error:', upsertError)
 
+    // Normaliser les jobs pour le front
     const jobs = (savedJobs || allJobs).map(j => ({
       ...j,
       lon: j.lon || j.lng || null,
@@ -129,6 +125,7 @@ export default async function handler(req, res) {
       orderVolumes: orderVolumesMap[j.order_id] || [],
     }))
 
+    // Préparer les stops pour le solver
     const jobsToOptimize = jobs.filter(j => {
       if (j.status !== 'todo') return false
       if (!j.lat || !j.lon) return false
@@ -137,18 +134,43 @@ export default async function handler(req, res) {
     }).map(j => ({
       ...j,
       priority: jobPriorities[j.id] || j.priority || 'medium',
+      timeFrom: jobTimeWindows[j.id]?.timeFrom ?? j.timeFrom,
+      timeTo: jobTimeWindows[j.id]?.timeTo ?? j.timeTo,
+      timeStrict: jobTimeWindows[j.id]?.timeStrict ?? j.timeStrict,
     }))
-
-    const failed = jobs.filter(j => !j.lat || !j.lon)
 
     const [sh, sm] = startTime.split(':').map(Number)
     const [eh, em] = endTime.split(':').map(Number)
     const startMin = sh * 60 + (sm || 0)
     const endMin = eh * 60 + (em || 0)
 
-    const plan = solveMultiDayVRP(depot, jobsToOptimize, numTrucks, numDays, startMin, endMin, truckCapacity)
+    // ─── Call the solver ───
+    const solverResult = await solve({
+      depot,
+      stops: jobsToOptimize,
+      config: {
+        numTrucks,
+        numDays,
+        startMin,
+        endMin,
+        truckCapacity,
+        googleApiKey: process.env.GOOGLE_MAPS_API_KEY || null,
+        speedKmh: 35,
+      },
+    })
 
-    res.status(200).json({ plan, allJobs: jobs, failed, depot, sessionDate })
+    const failed = jobs.filter(j => !j.lat || !j.lon)
+
+    res.status(200).json({
+      plan: solverResult.days,
+      allJobs: jobs,
+      failed,
+      depot,
+      sessionDate,
+      solverStats: solverResult.stats,
+      solverWarnings: solverResult.warnings,
+      solverUnassigned: solverResult.unassigned,
+    })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: err.message })
