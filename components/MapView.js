@@ -1,4 +1,3 @@
-// force rebuild v3
 import { useEffect, useRef, useState, useCallback } from 'react'
 
 const COLORS = ['#2ECC8F', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C', '#15803D', '#C2410C']
@@ -52,9 +51,55 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
   }, [])
 
   // Fetch route polylines separately
+  // Fetch route polylines from Google Directions
   useEffect(() => {
-    // Temporarily disabled — using straight lines fallback
-    // TODO: re-enable when /api/directions is stable
+    if (!showRoutes || !routes || !depot) return
+    const depotLon = getLon(depot)
+    if (!depot.lat || !depotLon) return
+
+    const fetchRoutes = async () => {
+      const newPolylines = {}
+      for (let ti = 0; ti < routes.length; ti++) {
+        const truck = routes[ti]
+        const cacheKey = truck.truckId + '_' + truck.stops.map(s => s.lat + ',' + getLon(s)).join('|')
+
+        if (routePolylines[cacheKey]) {
+          newPolylines[cacheKey] = routePolylines[cacheKey]
+          continue
+        }
+
+        try {
+          const origin = `${depot.lat},${depotLon}`
+          const destination = origin
+          const waypoints = truck.stops
+            .map(s => { const lon = getLon(s); return s.lat && lon ? `${s.lat},${lon}` : null })
+            .filter(Boolean)
+
+          if (waypoints.length === 0) continue
+
+          const res = await fetch('/api/directions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ origin, destination, waypoints }),
+          })
+
+          if (res.ok) {
+            const data = await res.json()
+            if (data.overviewPolyline) {
+              newPolylines[cacheKey] = decodePolyline(data.overviewPolyline)
+            }
+          }
+        } catch (err) {
+          // Silently fail — will use straight lines
+        }
+      }
+
+      if (Object.keys(newPolylines).length > 0) {
+        setRoutePolylines(prev => ({ ...prev, ...newPolylines }))
+      }
+    }
+
+    fetchRoutes()
   }, [routes, depot, showRoutes])
 
   // Render markers and lines
