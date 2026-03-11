@@ -1,10 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 
 const COLORS = ['#2ECC8F', '#0891B2', '#0D9488', '#7C3AED', '#B45309', '#BE123C', '#15803D', '#C2410C']
 const STATUS_COLORS = { pending: '#6366F1', todo: '#2563EB', done: '#059669', ecarte: '#D97706' }
 const REGISTRY = {}
 
-// Decode Google encoded polyline
 function decodePolyline(encoded) {
   const points = []
   let index = 0, lat = 0, lng = 0
@@ -20,42 +19,19 @@ function decodePolyline(encoded) {
   return points
 }
 
-// Fetch real route polyline from our API proxy
-async function fetchRoutePolyline(depot, stops) {
-  if (!stops || stops.length === 0) return null
-  try {
-    const origin = `${depot.lat},${depot.lon || depot.lng}`
-    const destination = origin // Return to depot
-    const waypoints = stops.map(s => `${s.lat},${s.lon || s.lng}`).filter(w => !w.includes('undefined') && !w.includes('null'))
-    if (waypoints.length === 0) return null
-
-    const res = await fetch('/api/directions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ origin, destination, waypoints }),
-    })
-
-    if (!res.ok) return null
-    const data = await res.json()
-    if (data.overviewPolyline) {
-      return decodePolyline(data.overviewPolyline)
-    }
-    return null
-  } catch {
-    return null
-  }
-}
+const getLon = (obj) => obj?.lon ?? obj?.lng ?? null
 
 export default function MapView({ jobs, routes, depot, highlightTruck, onStatusChange, onSelect, selectedIds = [], lang = 'fr', showRoutes = true }) {
   const mapRef = useRef(null)
   const instanceRef = useRef(null)
   const layersRef = useRef([])
-  const routeCacheRef = useRef({}) // Cache polylines by truckId
+  const [routePolylines, setRoutePolylines] = useState({})
 
   const t = lang === 'en'
     ? { done: 'Done', ecarte: 'Skipped', select: '+ Select', depot: 'Depot' }
     : { done: 'Fait', ecarte: 'Écarté', select: '+ Sélect.', depot: 'Dépôt' }
 
+  // Init map once
   useEffect(() => {
     if (instanceRef.current) return
     const L = require('leaflet')
@@ -74,6 +50,59 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
     }
   }, [])
 
+  // Fetch route polylines separately (not in render useEffect)
+  useEffect(() => {
+    if (!showRoutes || !routes || !depot) return
+    const depotLon = getLon(depot)
+    if (!depot.lat || !depotLon) return
+
+    const fetchRoutes = async () => {
+      const newPolylines = {}
+      for (let ti = 0; ti < routes.length; ti++) {
+        const truck = routes[ti]
+        const cacheKey = truck.truckId + '_' + truck.stops.map(s => s.lat + ',' + getLon(s)).join('|')
+        
+        // Skip if already cached
+        if (routePolylines[cacheKey]) {
+          newPolylines[cacheKey] = routePolylines[cacheKey]
+          continue
+        }
+
+        try {
+          const origin = `${depot.lat},${depotLon}`
+          const destination = origin
+          const waypoints = truck.stops
+            .map(s => { const lon = getLon(s); return s.lat && lon ? `${s.lat},${lon}` : null })
+            .filter(Boolean)
+
+          if (waypoints.length === 0) continue
+
+          const res = await fetch('/api/directions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ origin, destination, waypoints }),
+          })
+
+          if (res.ok) {
+            const data = await res.json()
+            if (data.overviewPolyline) {
+              newPolylines[cacheKey] = decodePolyline(data.overviewPolyline)
+            }
+          }
+        } catch (err) {
+          // Silently fail — will use straight lines
+        }
+      }
+
+      if (Object.keys(newPolylines).length > 0) {
+        setRoutePolylines(prev => ({ ...prev, ...newPolylines }))
+      }
+    }
+
+    fetchRoutes()
+  }, [routes, depot, showRoutes])
+
+  // Render markers and lines
   useEffect(() => {
     if (!instanceRef.current) return
     const L = require('leaflet')
@@ -89,33 +118,22 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
     layersRef.current.forEach(l => map.removeLayer(l))
     layersRef.current = []
     const bounds = []
-
-    const getLon = (obj) => obj?.lon ?? obj?.lng ?? null
     const depotLon = getLon(depot)
 
     // Draw routes
     if (showRoutes && routes && depot && depot.lat && depotLon) {
-      routes.forEach(async (truck, ti) => {
+      routes.forEach((truck, ti) => {
         const color = COLORS[ti % COLORS.length]
         const opacity = highlightTruck == null || highlightTruck === truck.truckId ? 0.8 : 0.15
-
-        // Try to fetch real route polyline
-        const cacheKey = truck.truckId + '_' + truck.stops.map(s => s.lat).join(',')
-
-        if (!routeCacheRef.current[cacheKey]) {
-          const polyline = await fetchRoutePolyline(depot, truck.stops)
-          routeCacheRef.current[cacheKey] = polyline
-        }
-
-        const cachedPolyline = routeCacheRef.current[cacheKey]
+        const cacheKey = truck.truckId + '_' + truck.stops.map(s => s.lat + ',' + getLon(s)).join('|')
+        const cachedPolyline = routePolylines[cacheKey]
 
         if (cachedPolyline) {
-          // Real route from Google
           const line = L.polyline(cachedPolyline, { color, weight: 3, opacity, smoothFactor: 1 })
           line.addTo(map)
           layersRef.current.push(line)
         } else {
-          // Fallback: straight lines
+          // Fallback: straight dashed lines
           const pts = [[depot.lat, depotLon]]
           truck.stops.forEach(s => {
             const sLon = getLon(s)
@@ -123,7 +141,7 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
           })
           pts.push([depot.lat, depotLon])
           if (pts.length > 2) {
-            const line = L.polyline(pts, { color, weight: 2.5, opacity, dashArray: '7 4' })
+            const line = L.polyline(pts, { color, weight: 2, opacity, dashArray: '6 4' })
             line.addTo(map)
             layersRef.current.push(line)
           }
@@ -177,7 +195,7 @@ export default function MapView({ jobs, routes, depot, highlightTruck, onStatusC
 
     if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40] })
     else if (depot && depot.lat && depotLon) map.setView([depot.lat, depotLon], 12)
-  }, [jobs, routes, depot, highlightTruck, selectedIds, lang, showRoutes, onStatusChange, onSelect])
+  }, [jobs, routes, depot, highlightTruck, selectedIds, lang, showRoutes, routePolylines, onStatusChange, onSelect])
 
   return <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
 }
