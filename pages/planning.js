@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react'
 import Head from 'next/head'
-import dynamic from 'next/dynamic'
-
-const WeekCalendar = dynamic(() => import('../components/WeekCalendar'), { ssr: false })
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxamVuaHBhb2h3dW5qdmdtbHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0MTM1MTYsImV4cCI6MjA4Nzk4OTUxNn0.-81H9_nbaNJitTCJmVAJxE_l3FIio3algjCJGjovUcs'
 
