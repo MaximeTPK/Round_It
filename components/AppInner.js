@@ -113,19 +113,139 @@ export default function AppInner() {
   const [planDragOver, setPlanDragOver] = useState(null)
   const [needsRefresh, setNeedsRefresh] = useState(false)
   const [showRoutes, setShowRoutes] = useState(true)
+  const [userId, setUserId] = useState(null)
+  const [userProfile, setUserProfile] = useState(null)   // { id, email, full_name, role }
+  const [allProfiles, setAllProfiles] = useState([])       // tous les profils pour afficher les noms
+  const [showAdmin, setShowAdmin] = useState(false)        // panneau admin manager
+  const [routeValidated, setRouteValidated] = useState(false)
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
+  const today = new Date().toISOString().slice(0, 10)
+  const isManager = userProfile?.role === 'manager'
 
+  // ─── Save plan to Supabase (shared by date) ───
+  const savePlanToDb = async (planData, depotData) => {
+    if (!userId) return
+    try {
+      await getClient().from('saved_routes').upsert({
+        session_date: today,
+        user_id: userId,
+        plan: planData || [],
+        depot: depotData || null,
+        config: { numTrucks, numDays, startTime, endTime, maxParcels, maxVolume, depot },
+        validated: routeValidated,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'session_date' })
+    } catch (err) {
+      console.error('Save plan error:', err)
+    }
+  }
+
+  // ─── Save jobs statuses/priorities to Supabase ───
+  const saveJobsToDb = async (jobs) => {
+    if (!userId) return
+    try {
+      const updates = jobs.map(j => ({
+        id: j.id,
+        status: j.status,
+        priority: j.priority || 'medium',
+        time_from: j.timeFrom ?? null,
+        time_to: j.timeTo ?? null,
+        time_strict: j.timeStrict ?? false,
+      }))
+      for (const u of updates) {
+        if (u.id) await getClient().from('jobs').update(u).eq('id', u.id)
+      }
+    } catch (err) {
+      console.error('Save jobs error:', err)
+    }
+  }
+
+  // ─── Load saved data on startup + refresh every 30s ───
   useEffect(() => {
     const savedDepot = localStorage.getItem(DEPOT_KEY)
     const savedTrucks = localStorage.getItem(TRUCKS_KEY)
     if (savedDepot) setDepot(savedDepot)
     if (savedTrucks) setNumTrucks(parseInt(savedTrucks))
-    getClient().auth.getSession().then(({ data:{ session } }) => {
-      if (session?.user) setUserEmail(session.user.email)
-      else window.location.href = '/login'
+
+    let refreshInterval = null
+
+    getClient().auth.getSession().then(async ({ data:{ session } }) => {
+      if (!session?.user) { window.location.href = '/login'; return }
+      const uid = session.user.id
+      setUserEmail(session.user.email)
+      setUserId(uid)
+
+      // Load profile
+      const { data: profile } = await getClient().from('profiles')
+        .select('*').eq('id', uid).single()
+
+      if (!profile) {
+        // No profile → redirect to setup
+        window.location.href = '/setup'
+        return
+      }
+      setUserProfile(profile)
+
+      // Load all profiles (for displaying names)
+      const { data: profiles } = await getClient().from('profiles').select('*')
+      if (profiles) setAllProfiles(profiles)
+
+      // Load function
+      const loadSharedData = async () => {
+        // Load ALL jobs for today (shared — no user_id filter)
+        const { data: savedJobs } = await getClient().from('jobs')
+          .select('*')
+          .eq('session_date', today)
+
+        if (savedJobs && savedJobs.length > 0) {
+          const normalized = savedJobs.map(j => ({
+            ...j,
+            lon: j.lon || j.lng || null,
+            volumeM3: j.volume_m3 || j.volumeM3 || 0,
+            timeFrom: j.time_from ?? j.timeFrom ?? null,
+            timeTo: j.time_to ?? j.timeTo ?? null,
+            timeStrict: j.time_strict ?? j.timeStrict ?? false,
+            orderVolumes: j.order_volumes || j.orderVolumes || [],
+            priority: j.priority || 'medium',
+          }))
+          setAllJobs(normalized)
+        }
+
+        // Load saved route for today (shared — no user_id filter)
+        const { data: savedRoute } = await getClient().from('saved_routes')
+          .select('*')
+          .eq('session_date', today)
+          .single()
+
+        if (savedRoute) {
+          if (savedRoute.plan && savedRoute.plan.length > 0) {
+            setPlan(savedRoute.plan)
+            if (!refreshInterval) setActiveTab('planning') // Only on first load
+          }
+          if (savedRoute.depot) setDepotCoords(savedRoute.depot)
+          if (savedRoute.validated) setRouteValidated(true)
+          if (savedRoute.config) {
+            if (savedRoute.config.depot) setDepot(savedRoute.config.depot)
+            if (savedRoute.config.numTrucks) setNumTrucks(savedRoute.config.numTrucks)
+            if (savedRoute.config.numDays) setNumDays(savedRoute.config.numDays)
+            if (savedRoute.config.startTime) setStartTime(savedRoute.config.startTime)
+            if (savedRoute.config.endTime) setEndTime(savedRoute.config.endTime)
+            if (savedRoute.config.maxParcels) setMaxParcels(savedRoute.config.maxParcels)
+            if (savedRoute.config.maxVolume) setMaxVolume(savedRoute.config.maxVolume)
+          }
+        }
+      }
+
+      // Initial load
+      await loadSharedData()
+
+      // Refresh every 30s
+      refreshInterval = setInterval(loadSharedData, 30000)
     })
+
+    return () => { if (refreshInterval) clearInterval(refreshInterval) }
   }, [])
 
   const saveDepot = v => { setDepot(v); localStorage.setItem(DEPOT_KEY, v) }
@@ -152,11 +272,42 @@ export default function AppInner() {
   }
   const handleReset = () => { setAllJobs([]); setPlan([]); setPickingFiles([]); setDeliveryFiles([]); setDepotCoords(null); setNeedsRefresh(false) }
 
+  // ─── Permissions ───
+  const canEditJob = (job) => {
+    if (isManager) return true
+    return job.created_by === userId || job.user_id === userId
+  }
+  const getCreatorName = (job) => {
+    const creatorId = job.created_by || job.user_id
+    const profile = allProfiles.find(p => p.id === creatorId)
+    return profile?.full_name || profile?.email?.split('@')[0] || '?'
+  }
+
   // ─── Job updates ───
-  const updateJob = (id, fields) => setAllJobs(p => p.map(j => j.id === id ? { ...j, ...fields } : j))
+  const updateJob = (id, fields) => {
+    const job = allJobs.find(j => j.id === id)
+    if (job && !canEditJob(job)) return // Permission check
+    setAllJobs(p => {
+      const updated = p.map(j => j.id === id ? { ...j, ...fields } : j)
+      if (fields.priority || fields.timeFrom !== undefined || fields.timeTo !== undefined || fields.timeStrict !== undefined) {
+        const j = updated.find(j => j.id === id)
+        if (j) {
+          getClient().from('jobs').update({
+            priority: j.priority || 'medium',
+            time_from: j.timeFrom ?? null,
+            time_to: j.timeTo ?? null,
+            time_strict: j.timeStrict ?? false,
+          }).eq('id', id).then(() => {})
+        }
+      }
+      return updated
+    })
+  }
 
   const updateStatus = async (id, status) => {
     if (!id) return
+    const job = allJobs.find(j => j.id === id)
+    if (job && !canEditJob(job)) return // Permission check
     setAllJobs(p => p.map(j => j.id === id ? { ...j, status } : j))
     const token = await getToken()
     await fetch('/api/jobs', { method:'PATCH', headers:{ 'Content-Type':'application/json', ...(token ? { Authorization:'Bearer '+token } : {}) }, body:JSON.stringify({ id, status }) })
@@ -240,6 +391,8 @@ export default function AppInner() {
       // Remove empty trucks
       np[dayIdx].trucks = np[dayIdx].trucks.filter(t => t.stops.length > 0)
 
+      // Auto-save
+      savePlanToDb(np, depotCoords)
       return np
     })
   }
@@ -278,6 +431,8 @@ export default function AppInner() {
         if (src.truckIdx !== tgtTruckIdx) Object.assign(tgtT, recalcTruck(tgtT.stops, depotCoords, sMin))
       }
       np[src.dayIdx].trucks = np[src.dayIdx].trucks.filter(t => t.stops.length > 0)
+      // Auto-save
+      savePlanToDb(np, depotCoords)
       return np
     })
   }
@@ -370,6 +525,9 @@ export default function AppInner() {
       }
 
       setAllJobs(mergedJobs); setPlan(data.plan); setDepotCoords(data.depot); setActiveTab('planning'); setNeedsRefresh(false)
+      // Auto-save to DB
+      savePlanToDb(data.plan, data.depot)
+      saveJobsToDb(mergedJobs)
     } catch (e) { setError(e.message) }
     finally { setLoading(false); setProgress('') }
   }
@@ -473,12 +631,59 @@ export default function AppInner() {
             {loading ? T.optimizing : todoJobs.length > 0 ? T.optimizeSel.replace('{n}',todoJobs.length) : T.optimizeAll}
           </button>
           <div style={{width:1,height:22,background:'var(--border)'}}/>
-          {userEmail && <span style={{fontSize:11,color:'var(--muted)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{userEmail}</span>}
+          {userProfile && (
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:11,fontWeight:600,color:'var(--navy)'}}>{userProfile.full_name}</span>
+              <span style={{fontSize:9,padding:'2px 6px',borderRadius:4,background:isManager?'var(--blue-soft)':'var(--indigo-soft)',color:isManager?'var(--navy)':'var(--indigo)',fontWeight:700}}>
+                {isManager ? 'Manager' : 'Coord.'}
+              </span>
+            </div>
+          )}
+          {isManager && (
+            <button onClick={() => setShowAdmin(!showAdmin)} style={{padding:'4px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,fontWeight:600,color:'var(--navy)',background:showAdmin?'var(--blue-soft)':'var(--bg)',cursor:'pointer'}}>
+              ⚙️ {lang==='fr'?'Admin':'Admin'}
+            </button>
+          )}
+          {isManager && plan.length > 0 && (
+            <button onClick={async () => { setRouteValidated(!routeValidated); await getClient().from('saved_routes').update({ validated: !routeValidated, validated_by: userId }).eq('session_date', today) }}
+              style={{padding:'4px 10px',border:'1px solid '+(routeValidated?'var(--success)':'var(--border)'),borderRadius:6,fontSize:11,fontWeight:600,color:routeValidated?'var(--success)':'var(--navy)',background:routeValidated?'var(--success-soft)':'var(--bg)',cursor:'pointer'}}>
+              {routeValidated ? '✅ Validé' : '☐ Valider'}
+            </button>
+          )}
           <button onClick={handleLogout} style={{padding:'4px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,fontWeight:600,color:'var(--danger)',background:'var(--bg)',cursor:'pointer'}}>{T.logout}</button>
         </div>
 
         {error && <div style={{background:'#FEF2F2',borderBottom:'1px solid #FECACA',padding:'8px 20px',fontSize:12,color:'var(--danger)'}}>⚠️ {error}</div>}
         {alert && <div style={{background:'#FFFBEB',borderBottom:'1px solid #FDE68A',padding:'8px 20px',fontSize:12,color:'var(--warning)',fontWeight:600}}>{alert}</div>}
+        {routeValidated && (
+          <div style={{background:'var(--success-soft)',borderBottom:'1px solid #BBF7D0',padding:'6px 20px',fontSize:12,color:'var(--success)',fontWeight:600,display:'flex',alignItems:'center',gap:8}}>
+            ✅ {lang==='fr'?'Tournée validée par le manager':'Route validated by manager'}
+            {!isManager && <span style={{fontSize:11,color:'var(--muted)',fontWeight:400}}>— {lang==='fr'?'modifications verrouillées':'modifications locked'}</span>}
+          </div>
+        )}
+        {/* Admin panel */}
+        {showAdmin && isManager && (
+          <div style={{background:'var(--white)',borderBottom:'1px solid var(--border)',padding:'14px 20px'}}>
+            <div style={{fontSize:13,fontWeight:700,color:'var(--navy)',marginBottom:10}}>⚙️ {lang==='fr'?'Gestion des utilisateurs':'User Management'}</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {allProfiles.map(p => (
+                <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'var(--bg)',borderRadius:8,border:'1px solid var(--border)'}}>
+                  <span style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{p.full_name || p.email}</span>
+                  <select value={p.role} onChange={async e => {
+                    const newRole = e.target.value
+                    await getClient().from('profiles').update({ role: newRole }).eq('id', p.id)
+                    setAllProfiles(prev => prev.map(pp => pp.id === p.id ? { ...pp, role: newRole } : pp))
+                  }} style={{padding:'4px 8px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,fontWeight:600,color:'var(--navy)',background:'var(--white)',cursor:'pointer'}}>
+                    <option value="coordinator">Coordinateur</option>
+                    <option value="manager">Manager</option>
+                  </select>
+                  <span style={{fontSize:10,color:'var(--muted)'}}>{p.email}</span>
+                </div>
+              ))}
+              {allProfiles.length === 0 && <span style={{fontSize:12,color:'var(--muted)'}}>{lang==='fr'?'Aucun utilisateur':'No users'}</span>}
+            </div>
+          </div>
+        )}
         {needsRefresh && (
           <div style={{background:'var(--blue-soft)',borderBottom:'1px solid var(--blue)',padding:'8px 20px',display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:12,color:'var(--navy)',fontWeight:500,flex:1}}>{lang==='fr'?'Nouveau fichier importé — cliquez Rafraîchir pour mettre à jour les jobs':'New file imported — click Refresh to update jobs'}</span>
@@ -568,7 +773,7 @@ export default function AppInner() {
                         <button onClick={selectAllPending} style={{marginLeft:'auto',padding:'3px 8px',borderRadius:5,fontSize:9,fontWeight:700,background:'var(--indigo-soft)',color:'var(--indigo)',border:'none',cursor:'pointer'}}>{T.selectAllPending}</button>
                       </div>
                       {pendingJobs.map(job => (
-                        <JobItem key={job.id} job={job} lang={lang}
+                        <JobItem key={job.id} job={job} lang={lang} canEdit={canEditJob(job)} creatorName={getCreatorName(job)}
                           onStatus={s => updateStatus(job.id, s)}
                           onUpdateJob={f => updateJob(job.id, f)}
                           onSelectForRoute={() => selectForRoute(job.id)}
@@ -593,7 +798,7 @@ export default function AppInner() {
                               <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>{jobsInZone.length}</span>
                             </div>
                             {jobsInZone.map(job => (
-                              <JobItem key={job.id} job={job} lang={lang}
+                              <JobItem key={job.id} job={job} lang={lang} canEdit={canEditJob(job)} creatorName={getCreatorName(job)}
                                 onStatus={s => updateStatus(job.id, s)}
                                 onDragStart={e => handleDragStart(e, job.id)}
                                 onUpdateJob={f => updateJob(job.id, f)}
@@ -606,8 +811,8 @@ export default function AppInner() {
                       })}
                     </>
                   )}
-                  {doneJobs.length > 0 && <><SectionLabel mt>{T.doneSection} — {doneJobs.length}</SectionLabel>{doneJobs.map(j => <JobItem key={j.id} job={j} lang={lang} onStatus={s => updateStatus(j.id,s)} onUpdateJob={f => updateJob(j.id,f)} T={T}/>)}</>}
-                  {ecarteJobs.length > 0 && <><SectionLabel mt>{T.ecarteSection} — {ecarteJobs.length}</SectionLabel>{ecarteJobs.map(j => <JobItem key={j.id} job={j} lang={lang} onStatus={s => updateStatus(j.id,s)} onUpdateJob={f => updateJob(j.id,f)} T={T}/>)}</>}
+                  {doneJobs.length > 0 && <><SectionLabel mt>{T.doneSection} — {doneJobs.length}</SectionLabel>{doneJobs.map(j => <JobItem key={j.id} job={j} lang={lang} canEdit={canEditJob(j)} creatorName={getCreatorName(j)} onStatus={s => updateStatus(j.id,s)} onUpdateJob={f => updateJob(j.id,f)} T={T}/>)}</>}
+                  {ecarteJobs.length > 0 && <><SectionLabel mt>{T.ecarteSection} — {ecarteJobs.length}</SectionLabel>{ecarteJobs.map(j => <JobItem key={j.id} job={j} lang={lang} canEdit={canEditJob(j)} creatorName={getCreatorName(j)} onStatus={s => updateStatus(j.id,s)} onUpdateJob={f => updateJob(j.id,f)} T={T}/>)}</>}
                 </div>
               )}
 
@@ -633,9 +838,9 @@ export default function AppInner() {
 
 /* ─── Job item — bigger & more readable ─── */
 
-function JobItem({ job, lang, onStatus, onDragStart, onUpdateJob, onSelectForRoute, onUnselectFromRoute, T }) {
+function JobItem({ job, lang, onStatus, onDragStart, onUpdateJob, onSelectForRoute, onUnselectFromRoute, T, canEdit = true, creatorName }) {
   const [open, setOpen] = useState(false)
-  const isDraggable = job.status === 'todo' && !!onDragStart
+  const isDraggable = canEdit && job.status === 'todo' && !!onDragStart
   const hasMeta = (job.parcels && job.parcels > 0) || (job.volumeM3 && job.volumeM3 > 0)
   const hasWindow = job.timeFrom != null || job.timeTo != null
   const isPending = job.status === 'pending'
@@ -656,25 +861,29 @@ function JobItem({ job, lang, onStatus, onDragStart, onUpdateJob, onSelectForRou
         <div style={{width:10,height:10,borderRadius:'50%',background:STATUS_COLORS[job.status],flexShrink:0}}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:600,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.owner_name||job.address}</div>
-          <div style={{fontSize:11,color:'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>{job.address}</div>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginTop:1}}>
+            <span style={{fontSize:11,color:'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.address}</span>
+            {creatorName && <span style={{fontSize:9,padding:'1px 5px',borderRadius:4,background:'#F1F5F9',color:'#64748B',fontWeight:500,flexShrink:0}}>👤 {creatorName}</span>}
+          </div>
           <div style={{display:'flex',gap:8,marginTop:3,flexWrap:'wrap'}}>
             {hasMeta && job.parcels>0 && <span style={{fontSize:10,color:'var(--muted)'}}>📦 {job.parcels} {T.parcels}</span>}
             {hasMeta && job.volumeM3>0 && <span style={{fontSize:10,color:'var(--muted)'}}>📐 {job.volumeM3} {T.volume}</span>}
             {hasWindow && <span style={{fontSize:10,color:job.timeStrict?'var(--danger)':'#0891B2',fontWeight:500}}>{job.timeStrict?'🔒':'🕐'} {minToTime(job.timeFrom)||'...'}-{minToTime(job.timeTo)||'...'}</span>}
           </div>
         </div>
-        {isPending && onSelectForRoute && (
+        {canEdit && isPending && onSelectForRoute && (
           <button onClick={e => { e.stopPropagation(); onSelectForRoute() }}
             style={{padding:'5px 10px',borderRadius:6,fontSize:11,fontWeight:700,background:'var(--blue-soft)',color:'var(--navy)',border:'1px solid var(--blue)',cursor:'pointer',whiteSpace:'nowrap'}}>
             {T.selectForRoute}
           </button>
         )}
-        {isTodo && onUnselectFromRoute && (
+        {canEdit && isTodo && onUnselectFromRoute && (
           <button onClick={e => { e.stopPropagation(); onUnselectFromRoute() }}
             style={{padding:'5px 10px',borderRadius:6,fontSize:11,fontWeight:700,background:'var(--indigo-soft)',color:'var(--indigo)',border:'1px solid var(--indigo)',cursor:'pointer',whiteSpace:'nowrap'}}>
             {T.unselectFromRoute}
           </button>
         )}
+        {!canEdit && <span style={{fontSize:9,color:'var(--muted)',fontStyle:'italic',flexShrink:0}}>🔒</span>}
         <span style={{fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:6,background:STATUS_BG[job.status],color:STATUS_COLORS[job.status],flexShrink:0}}>
           {job.status==='pending'?T.statusPending:job.status==='todo'?T.statusTodo:job.status==='done'?T.statusDone:T.statusEcarte}
         </span>
@@ -682,27 +891,36 @@ function JobItem({ job, lang, onStatus, onDragStart, onUpdateJob, onSelectForRou
       </div>
       {open && (
         <div style={{border:'1px solid var(--border)',borderTop:'none',borderRadius:'0 0 10px 10px',background:'var(--white)',padding:'10px 12px',display:'flex',flexDirection:'column',gap:10}}>
-          <div>
-            <div style={{fontSize:11,fontWeight:700,color:'var(--muted)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.04em'}}>{T.timeWindow}</div>
-            <div style={{display:'flex',gap:8,alignItems:'center'}}>
-              <input type="time" value={minToTime(job.timeFrom)} onChange={e => onUpdateJob?.({ timeFrom:timeToMin(e.target.value) })} style={{flex:1,padding:'7px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:13,outline:'none'}}/>
-              <span style={{fontSize:12,color:'var(--muted)',fontWeight:600}}>→</span>
-              <input type="time" value={minToTime(job.timeTo)} onChange={e => onUpdateJob?.({ timeTo:timeToMin(e.target.value) })} style={{flex:1,padding:'7px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:13,outline:'none'}}/>
-              {hasWindow && <span onClick={() => onUpdateJob?.({ timeFrom:null,timeTo:null,timeStrict:false })} style={{fontSize:11,color:'var(--danger)',cursor:'pointer',fontWeight:700,padding:'4px'}}>✕</span>}
-            </div>
-          </div>
-          {hasWindow && (
-            <div style={{display:'flex',gap:8}}>
-              <button onClick={() => onUpdateJob?.({ timeStrict:true })} style={{flex:1,padding:'7px',borderRadius:7,fontSize:12,fontWeight:600,cursor:'pointer',border:job.timeStrict?'2px solid var(--danger)':'1px solid var(--border)',background:job.timeStrict?'#FEF2F2':'var(--white)',color:job.timeStrict?'var(--danger)':'var(--muted)'}}>🔒 {T.strict}</button>
-              <button onClick={() => onUpdateJob?.({ timeStrict:false })} style={{flex:1,padding:'7px',borderRadius:7,fontSize:12,fontWeight:600,cursor:'pointer',border:!job.timeStrict?'2px solid #0891B2':'1px solid var(--border)',background:!job.timeStrict?'#ECFEFF':'var(--white)',color:!job.timeStrict?'#0891B2':'var(--muted)'}}>🕐 {T.flexible}</button>
+          {!canEdit && (
+            <div style={{fontSize:11,color:'var(--muted)',fontStyle:'italic',textAlign:'center',padding:4}}>
+              🔒 {lang==='fr'?'Lecture seule — ce job appartient à':'Read only — this job belongs to'} {creatorName}
             </div>
           )}
-          <div style={{display:'flex',gap:5,borderTop:'1px solid var(--border)',paddingTop:8}}>
-            <button onClick={()=>{onStatus('pending');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--indigo-soft)',color:'var(--indigo)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>{T.statusPending}</button>
-            <button onClick={()=>{onStatus('todo');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--blue-soft)',color:'var(--blue)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>{T.statusTodo}</button>
-            <button onClick={()=>{onStatus('done');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--success-soft)',color:'var(--success)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>✅ {T.statusDone}</button>
-            <button onClick={()=>{onStatus('ecarte');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--warning-soft)',color:'var(--warning)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>🔶</button>
-          </div>
+          {canEdit && (
+            <>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--muted)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.04em'}}>{T.timeWindow}</div>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                  <input type="time" value={minToTime(job.timeFrom)} onChange={e => onUpdateJob?.({ timeFrom:timeToMin(e.target.value) })} style={{flex:1,padding:'7px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:13,outline:'none'}}/>
+                  <span style={{fontSize:12,color:'var(--muted)',fontWeight:600}}>→</span>
+                  <input type="time" value={minToTime(job.timeTo)} onChange={e => onUpdateJob?.({ timeTo:timeToMin(e.target.value) })} style={{flex:1,padding:'7px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:13,outline:'none'}}/>
+                  {hasWindow && <span onClick={() => onUpdateJob?.({ timeFrom:null,timeTo:null,timeStrict:false })} style={{fontSize:11,color:'var(--danger)',cursor:'pointer',fontWeight:700,padding:'4px'}}>✕</span>}
+                </div>
+              </div>
+              {hasWindow && (
+                <div style={{display:'flex',gap:8}}>
+                  <button onClick={() => onUpdateJob?.({ timeStrict:true })} style={{flex:1,padding:'7px',borderRadius:7,fontSize:12,fontWeight:600,cursor:'pointer',border:job.timeStrict?'2px solid var(--danger)':'1px solid var(--border)',background:job.timeStrict?'#FEF2F2':'var(--white)',color:job.timeStrict?'var(--danger)':'var(--muted)'}}>🔒 {T.strict}</button>
+                  <button onClick={() => onUpdateJob?.({ timeStrict:false })} style={{flex:1,padding:'7px',borderRadius:7,fontSize:12,fontWeight:600,cursor:'pointer',border:!job.timeStrict?'2px solid #0891B2':'1px solid var(--border)',background:!job.timeStrict?'#ECFEFF':'var(--white)',color:!job.timeStrict?'#0891B2':'var(--muted)'}}>🕐 {T.flexible}</button>
+                </div>
+              )}
+              <div style={{display:'flex',gap:5,borderTop:'1px solid var(--border)',paddingTop:8}}>
+                <button onClick={()=>{onStatus('pending');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--indigo-soft)',color:'var(--indigo)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>{T.statusPending}</button>
+                <button onClick={()=>{onStatus('todo');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--blue-soft)',color:'var(--blue)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>{T.statusTodo}</button>
+                <button onClick={()=>{onStatus('done');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--success-soft)',color:'var(--success)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>✅ {T.statusDone}</button>
+                <button onClick={()=>{onStatus('ecarte');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--warning-soft)',color:'var(--warning)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>🔶</button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
