@@ -123,7 +123,14 @@ export default function AppInner() {
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+  const [selectedDate, setSelectedDate] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const dateParam = params.get('date')
+      if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) return dateParam
+    }
+    return new Date().toISOString().slice(0, 10)
+  })
   const today = selectedDate
   const isManager = userProfile?.role === 'manager'
 
@@ -677,6 +684,10 @@ export default function AppInner() {
           <button onClick={handleOptimize} disabled={loading||!hasFiles} style={{marginLeft:'auto',padding:'7px 16px',background:loading||!hasFiles?'var(--border)':'var(--navy)',color:loading||!hasFiles?'var(--muted)':'#fff',fontSize:12,fontWeight:700,border:'none',borderRadius:7,cursor:'pointer',whiteSpace:'nowrap'}}>
             {loading ? T.optimizing : todoJobs.length > 0 ? T.optimizeSel.replace('{n}',todoJobs.length) : T.optimizeAll}
           </button>
+
+          <a href="/planning" style={{padding:'7px 12px',border:'1px solid var(--border)',borderRadius:7,fontSize:11,fontWeight:600,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',textDecoration:'none',whiteSpace:'nowrap'}}>
+            📅 {lang==='fr'?'Planning':'Planning'}
+          </a>
 
           <div style={{width:1,height:20,background:'var(--border)'}}/>
 
