@@ -16,6 +16,7 @@ function getClient() {
 
 const MapView = dynamic(() => import('./MapView'), { ssr: false })
 const ChatPanel = dynamic(() => import('./ChatPanel'), { ssr: false })
+const FleetPanel = dynamic(() => import('./FleetPanel'), { ssr: false })
 
 const COLORS = ['#2ECC8F','#0891B2','#0D9488','#7C3AED','#B45309','#BE123C','#15803D','#C2410C']
 const DEPOT_KEY = 'roundit_depot'
@@ -118,11 +119,26 @@ export default function AppInner() {
   const [allProfiles, setAllProfiles] = useState([])       // tous les profils pour afficher les noms
   const [showAdmin, setShowAdmin] = useState(false)        // panneau admin manager
   const [routeValidated, setRouteValidated] = useState(false)
+  const [trucks, setTrucks] = useState([])
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
   const today = new Date().toISOString().slice(0, 10)
   const isManager = userProfile?.role === 'manager'
+
+  // ─── Truck CRUD ───
+  const handleUpdateTruck = async (id, fields) => {
+    setTrucks(prev => prev.map(t => t.id === id ? { ...t, ...fields } : t))
+    await getClient().from('trucks').update(fields).eq('id', id)
+  }
+  const handleAddTruck = async (name) => {
+    const { data } = await getClient().from('trucks').insert({ name, active: true }).select().single()
+    if (data) setTrucks(prev => [...prev, data])
+  }
+  const handleDeleteTruck = async (id) => {
+    await getClient().from('trucks').update({ active: false }).eq('id', id)
+    setTrucks(prev => prev.filter(t => t.id !== id))
+  }
 
   // ─── Save plan to Supabase (shared by date) ───
   const savePlanToDb = async (planData, depotData) => {
@@ -191,6 +207,10 @@ export default function AppInner() {
       // Load all profiles (for displaying names)
       const { data: profiles } = await getClient().from('profiles').select('*')
       if (profiles) setAllProfiles(profiles)
+
+      // Load trucks
+      const { data: truckData } = await getClient().from('trucks').select('*').eq('active', true).order('id')
+      if (truckData) setTrucks(truckData)
 
       // Load function
       const loadSharedData = async () => {
@@ -741,9 +761,9 @@ export default function AppInner() {
             <div style={{width:420,background:'var(--white)',borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
               {/* ─── Top: tabs + action buttons ─── */}
               <div style={{display:'flex',borderBottom:'1px solid var(--border)'}}>
-                {['jobs','planning'].map(tab => (
+                {['jobs','planning','fleet'].map(tab => (
                   <button key={tab} onClick={() => setActiveTab(tab)} style={{flex:1,padding:'10px 0',fontSize:12,fontWeight:600,background:'none',cursor:'pointer',color:activeTab===tab?'var(--navy)':'var(--muted)',border:'none',borderBottom:activeTab===tab?'2px solid var(--blue)':'2px solid transparent'}}>
-                    {tab==='jobs' ? T.jobs+' ('+allJobs.length+')' : T.planning+' '+numDays+'j'}
+                    {tab==='jobs' ? T.jobs+' ('+allJobs.length+')' : tab==='planning' ? T.planning+' '+numDays+'j' : (lang==='fr'?'Flotte':'Fleet')+' ('+trucks.length+')'}
                   </button>
                 ))}
               </div>
@@ -823,6 +843,14 @@ export default function AppInner() {
                     : plan.map((day,di) => <DayBlock key={day.day} day={day} dayIdx={di} colors={COLORS} onHover={setHighlightTruck} T={T} lang={lang}
                         onPlanDragStart={handlePlanDragStart} onPlanDragOver={handlePlanDragOver} onPlanDragLeave={handlePlanDragLeave} onPlanDrop={handlePlanDrop} planDragOver={planDragOver} onRemoveOrder={handleRemoveOrder}/>)
                   }
+                </div>
+              )}
+
+              {activeTab === 'fleet' && (
+                <div style={{flex:1,overflowY:'auto',minHeight:0}}>
+                  <FleetPanel trucks={trucks} plan={plan} lang={lang} isManager={isManager}
+                    onUpdateTruck={handleUpdateTruck} onAddTruck={handleAddTruck} onDeleteTruck={handleDeleteTruck}
+                    allProfiles={allProfiles}/>
                 </div>
               )}
 
