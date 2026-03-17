@@ -104,6 +104,7 @@ export default async function handler(req, res) {
         time_strict: stop.timeStrict ?? false,
         session_date: sessionDate,
         user_id: userId,
+        created_by: existing?.created_by || userId,
       }
     })
 
