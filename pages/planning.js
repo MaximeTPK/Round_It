@@ -95,7 +95,7 @@ export default function PlanningPage() {
     const data = {}
     for (const date of weekDates) {
       const { data: jobs } = await getClient().from('jobs').select('*').eq('session_date', date)
-      const { data: route } = await getClient().from('saved_routes').select('*').eq('session_date', date).single()
+      const { data: route } = await getClient().from('saved_routes').select('*').eq('session_date', date).maybeSingle()
 
       const normalizedJobs = (jobs || []).map(j => ({
         ...j,
