@@ -661,66 +661,46 @@ export default function AppInner() {
           </div>
         )}
 
-        {/* ─── Top bar — compact ─── */}
-        <div style={{background:'var(--white)',borderBottom:'1px solid var(--border)',padding:'8px 16px',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-          {/* Logo + lang */}
-          <span style={{fontSize:15,fontWeight:800,marginRight:2}}><span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span></span>
-          <button onClick={() => setLang(l => l==='fr'?'en':'fr')} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,fontWeight:700,color:'var(--navy)',background:'var(--bg)',cursor:'pointer'}}>{lang==='fr'?'EN':'FR'}</button>
-
-          <div style={{width:1,height:20,background:'var(--border)'}}/>
-
-          {/* Date navigation */}
-          <div style={{display:'flex',alignItems:'center',gap:4}}>
-            <button onClick={() => navigateDate(-1)} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:12,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',fontWeight:600}}>←</button>
-            <span style={{fontSize:13,fontWeight:700,color:'var(--navy)',padding:'0 6px',minWidth:120,textAlign:'center'}}>📅 {formatDateLabel(selectedDate)}</span>
-            <button onClick={() => navigateDate(1)} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:12,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',fontWeight:600}}>→</button>
-          </div>
-
-          <div style={{width:1,height:20,background:'var(--border)'}}/>
-
-          {/* Import CSV */}
+        {/* ─── Top bar — single line ─── */}
+        <div style={{background:'var(--white)',borderBottom:'1px solid var(--border)',padding:'6px 14px',display:'flex',alignItems:'center',gap:8,flexWrap:'nowrap',overflow:'hidden'}}>
+          <span style={{fontSize:14,fontWeight:800,flexShrink:0}}><span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span></span>
+          <button onClick={() => setLang(l => l==='fr'?'en':'fr')} style={{padding:'2px 6px',border:'1px solid var(--border)',borderRadius:4,fontSize:9,fontWeight:700,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',flexShrink:0}}>{lang==='fr'?'EN':'FR'}</button>
+          <div style={{width:1,height:18,background:'var(--border)',flexShrink:0}}/>
+          <button onClick={() => navigateDate(-1)} style={{padding:'2px 6px',border:'1px solid var(--border)',borderRadius:4,fontSize:11,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',fontWeight:600,flexShrink:0}}>←</button>
+          <span style={{fontSize:11,fontWeight:700,color:'var(--navy)',whiteSpace:'nowrap',flexShrink:0}}>📅 {formatDateLabel(selectedDate)}</span>
+          <button onClick={() => navigateDate(1)} style={{padding:'2px 6px',border:'1px solid var(--border)',borderRadius:4,fontSize:11,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',fontWeight:600,flexShrink:0}}>→</button>
+          <div style={{width:1,height:18,background:'var(--border)',flexShrink:0}}/>
           <UploadZone label={T.pickingCsv} files={pickingFiles} onFile={f => handleFileSelect(f,'picking')} inputRef={pickRef}/>
           <UploadZone label={T.deliveryCsv} files={deliveryFiles} onFile={f => handleFileSelect(f,'delivery')} inputRef={delRef}/>
-          {hasFiles && <button onClick={handleReset} style={{padding:'3px 8px',border:'1px solid #FECACA',borderRadius:5,fontSize:9,fontWeight:600,color:'var(--danger)',background:'#FEF2F2',cursor:'pointer'}}>{T.reset}</button>}
-
-          <div style={{width:1,height:20,background:'var(--border)'}}/>
-
-          {/* Dépôt + horaires */}
-          <Param label="📍"><input value={depot} onChange={e => saveDepot(e.target.value)} placeholder={T.depotPlaceholder} style={{width:170,padding:'5px 8px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,color:'var(--text)',outline:'none'}}/></Param>
-          <Param label="🕐"><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={{padding:'5px 6px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,outline:'none',width:75}}/></Param>
-          <span style={{fontSize:10,color:'var(--muted)'}}>→</span>
-          <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{padding:'5px 6px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,outline:'none',width:75}}/>
-
-          {/* Optimize */}
-          <button onClick={handleOptimize} disabled={loading||!hasFiles} style={{marginLeft:'auto',padding:'7px 16px',background:loading||!hasFiles?'var(--border)':'var(--navy)',color:loading||!hasFiles?'var(--muted)':'#fff',fontSize:12,fontWeight:700,border:'none',borderRadius:7,cursor:'pointer',whiteSpace:'nowrap'}}>
-            {loading ? T.optimizing : todoJobs.length > 0 ? T.optimizeSel.replace('{n}',todoJobs.length) : T.optimizeAll}
+          {hasFiles && <button onClick={handleReset} style={{padding:'2px 6px',border:'1px solid #FECACA',borderRadius:4,fontSize:8,fontWeight:600,color:'var(--danger)',background:'#FEF2F2',cursor:'pointer',flexShrink:0}}>{T.reset}</button>}
+          <div style={{width:1,height:18,background:'var(--border)',flexShrink:0}}/>
+          <span style={{fontSize:10,flexShrink:0}}>📍</span>
+          <input value={depot} onChange={e => saveDepot(e.target.value)} placeholder={T.depotPlaceholder} style={{width:150,padding:'4px 7px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,color:'var(--text)',outline:'none',flexShrink:1,minWidth:80}}/>
+          <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={{padding:'4px 5px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,outline:'none',width:65,flexShrink:0}}/>
+          <span style={{fontSize:9,color:'var(--muted)',flexShrink:0}}>→</span>
+          <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{padding:'4px 5px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,outline:'none',width:65,flexShrink:0}}/>
+          <button onClick={handleOptimize} disabled={loading||!hasFiles} style={{marginLeft:'auto',padding:'5px 14px',background:loading||!hasFiles?'var(--border)':'var(--navy)',color:loading||!hasFiles?'var(--muted)':'#fff',fontSize:11,fontWeight:700,border:'none',borderRadius:6,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0}}>
+            {loading ? '⏳' : todoJobs.length > 0 ? `${lang==='fr'?'Optimiser':'Optimize'} (${todoJobs.length})` : (lang==='fr'?'Optimiser':'Optimize')}
           </button>
-
-          <a href="/planning" style={{padding:'7px 12px',border:'1px solid var(--border)',borderRadius:7,fontSize:11,fontWeight:600,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',textDecoration:'none',whiteSpace:'nowrap'}}>
-            📅 {lang==='fr'?'Planning':'Planning'}
-          </a>
-
-          <div style={{width:1,height:20,background:'var(--border)'}}/>
-
-          {/* User + admin + validate */}
-          {userProfile && (
-            <div style={{display:'flex',alignItems:'center',gap:5}}>
-              <span style={{fontSize:11,fontWeight:600,color:'var(--navy)'}}>{userProfile.full_name}</span>
-              <span style={{fontSize:8,padding:'2px 5px',borderRadius:4,background:isManager?'var(--blue-soft)':'var(--indigo-soft)',color:isManager?'var(--navy)':'var(--indigo)',fontWeight:700}}>
-                {isManager ? 'Mgr' : 'Coord'}
-              </span>
-            </div>
-          )}
-          {isManager && (
-            <button onClick={() => setShowAdmin(!showAdmin)} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,fontWeight:600,color:'var(--navy)',background:showAdmin?'var(--blue-soft)':'var(--bg)',cursor:'pointer'}}>⚙️</button>
-          )}
+          <a href="/planning" style={{padding:'5px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:10,fontWeight:600,color:'var(--navy)',background:'var(--bg)',textDecoration:'none',whiteSpace:'nowrap',flexShrink:0}}>📅</a>
+          {isManager && <button onClick={() => setShowAdmin(!showAdmin)} style={{padding:'4px 7px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,color:'var(--navy)',background:showAdmin?'var(--blue-soft)':'var(--bg)',cursor:'pointer',flexShrink:0}}>⚙️</button>}
           {isManager && plan.length > 0 && (
             <button onClick={async () => { setRouteValidated(!routeValidated); await getClient().from('saved_routes').update({ validated: !routeValidated, validated_by: userId }).eq('session_date', today) }}
-              style={{padding:'3px 8px',border:'1px solid '+(routeValidated?'var(--success)':'var(--border)'),borderRadius:5,fontSize:10,fontWeight:600,color:routeValidated?'var(--success)':'var(--muted)',background:routeValidated?'var(--success-soft)':'var(--bg)',cursor:'pointer'}}>
+              style={{padding:'4px 7px',border:'1px solid '+(routeValidated?'var(--success)':'var(--border)'),borderRadius:5,fontSize:10,color:routeValidated?'var(--success)':'var(--muted)',background:routeValidated?'var(--success-soft)':'var(--bg)',cursor:'pointer',flexShrink:0}}>
               {routeValidated ? '✅' : '☐'}
             </button>
           )}
-          <button onClick={handleLogout} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,fontWeight:600,color:'var(--danger)',background:'var(--bg)',cursor:'pointer'}}>{T.logout}</button>
+          {/* User dropdown */}
+          <div style={{position:'relative',flexShrink:0}}>
+            <button onClick={e => { const el = e.currentTarget.nextSibling; el.style.display = el.style.display === 'none' ? 'block' : 'none' }}
+              style={{padding:'4px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,fontWeight:600,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',display:'flex',alignItems:'center',gap:4}}>
+              👤 {userProfile?.full_name || '...'} <span style={{fontSize:7,padding:'1px 4px',borderRadius:3,background:isManager?'var(--blue-soft)':'var(--indigo-soft)',color:isManager?'var(--navy)':'var(--indigo)',fontWeight:700}}>{isManager?'M':'C'}</span>
+            </button>
+            <div style={{display:'none',position:'absolute',right:0,top:'100%',marginTop:4,background:'var(--white)',border:'1px solid var(--border)',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.1)',padding:6,minWidth:120,zIndex:100}}>
+              <div style={{fontSize:10,color:'var(--muted)',padding:'4px 8px'}}>{userEmail}</div>
+              <button onClick={handleLogout} style={{width:'100%',padding:'6px 8px',background:'none',border:'none',borderRadius:4,fontSize:11,fontWeight:600,color:'var(--danger)',cursor:'pointer',textAlign:'left'}}>🚪 {T.logout}</button>
+            </div>
+          </div>
         </div>
 
         {error && <div style={{background:'#FEF2F2',borderBottom:'1px solid #FECACA',padding:'8px 20px',fontSize:12,color:'var(--danger)'}}>⚠️ {error}</div>}
@@ -861,7 +841,7 @@ export default function AppInner() {
                         return (
                           <div key={zone.key} className={'drop-zone'+(isOver?' drop-zone-active':'')}
                             onDragOver={e => handleDragOver(e, zone.key)} onDragLeave={handleDragLeave} onDrop={e => handleDrop(e, zone.key)}
-                            style={{marginBottom:8,borderRadius:10,border:'1.5px dashed '+(isOver?'var(--navy)':zone.border),background:isOver?zone.bg:'transparent',padding:'6px 8px',minHeight:44}}>
+                            style={{marginBottom:4,borderRadius:8,border:'1.5px dashed '+(isOver?'var(--navy)':zone.border),background:isOver?zone.bg:'transparent',padding:jobsInZone.length>0?'5px 7px':'3px 7px',minHeight:jobsInZone.length>0?'auto':28}}>
                             <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:jobsInZone.length>0?6:0}}>
                               <span style={{fontSize:10,color:zone.color,fontWeight:700}}>{zone.icon}</span>
                               <span style={{fontSize:10,fontWeight:700,color:zone.color,flex:1}}>{PRIORITY_LABELS[lang][zone.key]}</span>
@@ -875,7 +855,7 @@ export default function AppInner() {
                                 onUnselectFromRoute={() => unselectFromRoute(job.id)}
                                 T={T}/>
                             ))}
-                            {jobsInZone.length === 0 && <div style={{fontSize:10,color:'var(--muted)',textAlign:'center',padding:'4px 0',opacity:0.6}}>{lang==='fr'?'Déposez ici':'Drop here'}</div>}
+                            {jobsInZone.length === 0 && <div style={{fontSize:8,color:'var(--muted)',textAlign:'center',padding:'1px 0',opacity:0.4}}>{lang==='fr'?'Glissez ici':'Drop here'}</div>}
                           </div>
                         )
                       })}
@@ -914,12 +894,11 @@ export default function AppInner() {
   )
 }
 
-/* ─── Job item — bigger & more readable ─── */
+/* ─── Job item — compact ─── */
 
 function JobItem({ job, lang, onStatus, onDragStart, onUpdateJob, onSelectForRoute, onUnselectFromRoute, T, canEdit = true, creatorName }) {
   const [open, setOpen] = useState(false)
   const isDraggable = canEdit && job.status === 'todo' && !!onDragStart
-  const hasMeta = (job.parcels && job.parcels > 0) || (job.volumeM3 && job.volumeM3 > 0)
   const hasWindow = job.timeFrom != null || job.timeTo != null
   const isPending = job.status === 'pending'
   const isTodo = job.status === 'todo'
@@ -928,74 +907,76 @@ function JobItem({ job, lang, onStatus, onDragStart, onUpdateJob, onSelectForRou
   const timeToMin = s => { if (!s) return null; const [h,m]=s.split(':').map(Number); return h*60+(m||0) }
 
   return (
-    <div style={{position:'relative',marginBottom:5}}>
+    <div style={{position:'relative',marginBottom:3}}>
       <div draggable={isDraggable} onDragStart={isDraggable?onDragStart:undefined} className={isDraggable?'drag-item':''}
         onClick={() => setOpen(!open)}
-        style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:open?'10px 10px 0 0':'10px',
+        style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:open?'8px 8px 0 0':'8px',
           border:'1px solid '+(open?'var(--border)':'transparent'),
           background:isPending?'var(--indigo-soft)':isTodo?'var(--white)':job.status==='ecarte'?'var(--warning-soft)':'var(--white)',
           cursor:isDraggable?'grab':'pointer',opacity:job.status==='done'?.45:1}}>
-        {isDraggable && <span style={{fontSize:13,color:'var(--muted)',cursor:'grab',flexShrink:0,userSelect:'none'}}>⠿</span>}
-        <div style={{width:10,height:10,borderRadius:'50%',background:STATUS_COLORS[job.status],flexShrink:0}}/>
+        {isDraggable && <span style={{fontSize:11,color:'var(--muted)',cursor:'grab',flexShrink:0,userSelect:'none'}}>⠿</span>}
+        <div style={{width:8,height:8,borderRadius:'50%',background:STATUS_COLORS[job.status],flexShrink:0}}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:13,fontWeight:600,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.owner_name||job.address}</div>
-          <div style={{display:'flex',alignItems:'center',gap:6,marginTop:1}}>
-            <span style={{fontSize:11,color:'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.address}</span>
-            {creatorName && <span style={{fontSize:9,padding:'1px 5px',borderRadius:4,background:'#F1F5F9',color:'#64748B',fontWeight:500,flexShrink:0}}>👤 {creatorName}</span>}
-          </div>
-          <div style={{display:'flex',gap:8,marginTop:3,flexWrap:'wrap'}}>
-            {hasMeta && job.parcels>0 && <span style={{fontSize:10,color:'var(--muted)'}}>📦 {job.parcels} {T.parcels}</span>}
-            {hasMeta && job.volumeM3>0 && <span style={{fontSize:10,color:'var(--muted)'}}>📐 {job.volumeM3} {T.volume}</span>}
-            {hasWindow && <span style={{fontSize:10,color:job.timeStrict?'var(--danger)':'#0891B2',fontWeight:500}}>{job.timeStrict?'🔒':'🕐'} {minToTime(job.timeFrom)||'...'}-{minToTime(job.timeTo)||'...'}</span>}
+          <div style={{fontSize:12,fontWeight:600,color:'var(--text)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.owner_name||job.address}</div>
+          <div style={{display:'flex',gap:6,alignItems:'center',marginTop:1}}>
+            <span style={{fontSize:10,color:'var(--muted)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{job.address?.slice(0,30)}</span>
+            {job.parcels>0 && <span style={{fontSize:9,color:'var(--muted)',flexShrink:0}}>📦{job.parcels}</span>}
+            {job.volumeM3>0 && <span style={{fontSize:9,color:'var(--muted)',flexShrink:0}}>📐{job.volumeM3}</span>}
+            {hasWindow && <span style={{fontSize:9,color:job.timeStrict?'var(--danger)':'#0891B2',fontWeight:500,flexShrink:0}}>{job.timeStrict?'🔒':'🕐'}{minToTime(job.timeFrom)||'?'}-{minToTime(job.timeTo)||'?'}</span>}
+            {!canEdit && <span style={{fontSize:8,color:'var(--muted)',flexShrink:0}}>🔒</span>}
           </div>
         </div>
-        {canEdit && isPending && onSelectForRoute && (
-          <button onClick={e => { e.stopPropagation(); onSelectForRoute() }}
-            style={{padding:'5px 10px',borderRadius:6,fontSize:11,fontWeight:700,background:'var(--blue-soft)',color:'var(--navy)',border:'1px solid var(--blue)',cursor:'pointer',whiteSpace:'nowrap'}}>
-            {T.selectForRoute}
-          </button>
-        )}
-        {canEdit && isTodo && onUnselectFromRoute && (
-          <button onClick={e => { e.stopPropagation(); onUnselectFromRoute() }}
-            style={{padding:'5px 10px',borderRadius:6,fontSize:11,fontWeight:700,background:'var(--indigo-soft)',color:'var(--indigo)',border:'1px solid var(--indigo)',cursor:'pointer',whiteSpace:'nowrap'}}>
-            {T.unselectFromRoute}
-          </button>
-        )}
-        {!canEdit && <span style={{fontSize:9,color:'var(--muted)',fontStyle:'italic',flexShrink:0}}>🔒</span>}
-        <span style={{fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:6,background:STATUS_BG[job.status],color:STATUS_COLORS[job.status],flexShrink:0}}>
-          {job.status==='pending'?T.statusPending:job.status==='todo'?T.statusTodo:job.status==='done'?T.statusDone:T.statusEcarte}
+        <span style={{fontSize:8,fontWeight:700,padding:'2px 5px',borderRadius:4,background:STATUS_BG[job.status],color:STATUS_COLORS[job.status],flexShrink:0}}>
+          {job.status==='pending'?'P':job.status==='todo'?'T':job.status==='done'?'✓':'✕'}
         </span>
-        <span style={{fontSize:13,color:open?'var(--navy)':'var(--muted)',cursor:'pointer',flexShrink:0,fontWeight:open?700:400}} onClick={e=>{e.stopPropagation();setOpen(!open)}}>{open?'✕':'⋯'}</span>
+        <span style={{fontSize:11,color:open?'var(--navy)':'var(--muted)',cursor:'pointer',flexShrink:0}} onClick={e=>{e.stopPropagation();setOpen(!open)}}>{open?'✕':'⋯'}</span>
       </div>
       {open && (
-        <div style={{border:'1px solid var(--border)',borderTop:'none',borderRadius:'0 0 10px 10px',background:'var(--white)',padding:'10px 12px',display:'flex',flexDirection:'column',gap:10}}>
+        <div style={{border:'1px solid var(--border)',borderTop:'none',borderRadius:'0 0 8px 8px',background:'var(--white)',padding:'8px 10px',display:'flex',flexDirection:'column',gap:6}}>
           {!canEdit && (
-            <div style={{fontSize:11,color:'var(--muted)',fontStyle:'italic',textAlign:'center',padding:4}}>
-              🔒 {lang==='fr'?'Lecture seule — ce job appartient à':'Read only — this job belongs to'} {creatorName}
+            <div style={{fontSize:10,color:'var(--muted)',fontStyle:'italic',textAlign:'center',padding:2}}>
+              🔒 {lang==='fr'?'Lecture seule':'Read only'} — {creatorName}
             </div>
           )}
           {canEdit && (
             <>
-              <div>
-                <div style={{fontSize:11,fontWeight:700,color:'var(--muted)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.04em'}}>{T.timeWindow}</div>
-                <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                  <input type="time" value={minToTime(job.timeFrom)} onChange={e => onUpdateJob?.({ timeFrom:timeToMin(e.target.value) })} style={{flex:1,padding:'7px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:13,outline:'none'}}/>
-                  <span style={{fontSize:12,color:'var(--muted)',fontWeight:600}}>→</span>
-                  <input type="time" value={minToTime(job.timeTo)} onChange={e => onUpdateJob?.({ timeTo:timeToMin(e.target.value) })} style={{flex:1,padding:'7px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:13,outline:'none'}}/>
-                  {hasWindow && <span onClick={() => onUpdateJob?.({ timeFrom:null,timeTo:null,timeStrict:false })} style={{fontSize:11,color:'var(--danger)',cursor:'pointer',fontWeight:700,padding:'4px'}}>✕</span>}
-                </div>
+              {/* Quick actions: select / remove */}
+              <div style={{display:'flex',gap:4}}>
+                {isPending && onSelectForRoute && (
+                  <button onClick={e => { e.stopPropagation(); onSelectForRoute(); setOpen(false) }}
+                    style={{flex:1,padding:'5px',borderRadius:6,fontSize:10,fontWeight:700,background:'var(--blue-soft)',color:'var(--navy)',border:'1px solid var(--blue)',cursor:'pointer'}}>
+                    → {lang==='fr'?'Sélectionner':'Select'}
+                  </button>
+                )}
+                {isTodo && onUnselectFromRoute && (
+                  <button onClick={e => { e.stopPropagation(); onUnselectFromRoute(); setOpen(false) }}
+                    style={{flex:1,padding:'5px',borderRadius:6,fontSize:10,fontWeight:700,background:'var(--indigo-soft)',color:'var(--indigo)',border:'1px solid var(--indigo)',cursor:'pointer'}}>
+                    ← {lang==='fr'?'Retirer':'Remove'}
+                  </button>
+                )}
               </div>
-              {hasWindow && (
-                <div style={{display:'flex',gap:8}}>
-                  <button onClick={() => onUpdateJob?.({ timeStrict:true })} style={{flex:1,padding:'7px',borderRadius:7,fontSize:12,fontWeight:600,cursor:'pointer',border:job.timeStrict?'2px solid var(--danger)':'1px solid var(--border)',background:job.timeStrict?'#FEF2F2':'var(--white)',color:job.timeStrict?'var(--danger)':'var(--muted)'}}>🔒 {T.strict}</button>
-                  <button onClick={() => onUpdateJob?.({ timeStrict:false })} style={{flex:1,padding:'7px',borderRadius:7,fontSize:12,fontWeight:600,cursor:'pointer',border:!job.timeStrict?'2px solid #0891B2':'1px solid var(--border)',background:!job.timeStrict?'#ECFEFF':'var(--white)',color:!job.timeStrict?'#0891B2':'var(--muted)'}}>🕐 {T.flexible}</button>
-                </div>
-              )}
-              <div style={{display:'flex',gap:5,borderTop:'1px solid var(--border)',paddingTop:8}}>
-                <button onClick={()=>{onStatus('pending');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--indigo-soft)',color:'var(--indigo)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>{T.statusPending}</button>
-                <button onClick={()=>{onStatus('todo');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--blue-soft)',color:'var(--blue)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>{T.statusTodo}</button>
-                <button onClick={()=>{onStatus('done');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--success-soft)',color:'var(--success)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>✅ {T.statusDone}</button>
-                <button onClick={()=>{onStatus('ecarte');setOpen(false)}} style={{flex:1,padding:'7px',borderRadius:7,background:'var(--warning-soft)',color:'var(--warning)',fontSize:11,fontWeight:700,cursor:'pointer',border:'none'}}>🔶</button>
+              {/* Time window */}
+              <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                <input type="time" value={minToTime(job.timeFrom)} onChange={e => onUpdateJob?.({ timeFrom:timeToMin(e.target.value) })} style={{flex:1,padding:'5px 6px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,outline:'none'}}/>
+                <span style={{fontSize:10,color:'var(--muted)'}}>→</span>
+                <input type="time" value={minToTime(job.timeTo)} onChange={e => onUpdateJob?.({ timeTo:timeToMin(e.target.value) })} style={{flex:1,padding:'5px 6px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,outline:'none'}}/>
+                {hasWindow && (
+                  <button onClick={() => onUpdateJob?.({ timeStrict:!job.timeStrict })}
+                    style={{padding:'4px 8px',borderRadius:5,fontSize:9,fontWeight:700,cursor:'pointer',border:job.timeStrict?'1.5px solid var(--danger)':'1.5px solid #0891B2',background:job.timeStrict?'#FEF2F2':'#ECFEFF',color:job.timeStrict?'var(--danger)':'#0891B2'}}>
+                    {job.timeStrict?'🔒':'🕐'}
+                  </button>
+                )}
+                {hasWindow && <span onClick={() => onUpdateJob?.({ timeFrom:null,timeTo:null,timeStrict:false })} style={{fontSize:10,color:'var(--danger)',cursor:'pointer',fontWeight:700}}>✕</span>}
+              </div>
+              {/* Status buttons */}
+              <div style={{display:'flex',gap:3}}>
+                {['pending','todo','done','ecarte'].map(s => (
+                  <button key={s} onClick={()=>{onStatus(s);setOpen(false)}}
+                    style={{flex:1,padding:'5px',borderRadius:5,fontSize:9,fontWeight:700,cursor:'pointer',border:job.status===s?'1.5px solid '+STATUS_COLORS[s]:'1px solid var(--border)',
+                      background:job.status===s?STATUS_BG[s]:'var(--white)',color:STATUS_COLORS[s]}}>
+                    {s==='pending'?'P':s==='todo'?'Todo':s==='done'?'✓':'✕'}
+                  </button>
+                ))}
               </div>
             </>
           )}
