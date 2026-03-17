@@ -304,15 +304,26 @@ export default function AppInner() {
     if (type === 'picking') setPickingFiles(p => [...p, file])
     else setDeliveryFiles(p => [...p, file])
   }
-  const handleMergeChoice = (mode) => {
+  const handleMergeChoice = async (mode) => {
     if (!mergeModal) return
     const { type, file } = mergeModal
-    if (mode === 'replace') { setAllJobs([]); setPlan([]); setPickingFiles([]); setDeliveryFiles([]) }
+    if (mode === 'replace') {
+      setAllJobs([]); setPlan([]); setPickingFiles([]); setDeliveryFiles([])
+      // Supprimer les jobs du jour en base
+      await getClient().from('jobs').delete().eq('session_date', today)
+      // Supprimer la tournée du jour en base
+      await getClient().from('saved_routes').delete().eq('session_date', today)
+    }
     addFile(file, type)
     setMergeModal(null)
     setNeedsRefresh(true)
   }
-  const handleReset = () => { setAllJobs([]); setPlan([]); setPickingFiles([]); setDeliveryFiles([]); setDepotCoords(null); setNeedsRefresh(false) }
+  const handleReset = async () => {
+    setAllJobs([]); setPlan([]); setPickingFiles([]); setDeliveryFiles([]); setDepotCoords(null); setNeedsRefresh(false)
+    // Supprimer les jobs et la tournée du jour en base
+    await getClient().from('jobs').delete().eq('session_date', today)
+    await getClient().from('saved_routes').delete().eq('session_date', today)
+  }
 
   // ─── Permissions ───
   const canEditJob = (job) => {
