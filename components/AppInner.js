@@ -123,8 +123,23 @@ export default function AppInner() {
   const pickRef = useRef()
   const delRef = useRef()
   const T = I18N[lang]
-  const today = new Date().toISOString().slice(0, 10)
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+  const today = selectedDate
   const isManager = userProfile?.role === 'manager'
+
+  const navigateDate = (offset) => {
+    const d = new Date(selectedDate)
+    d.setDate(d.getDate() + offset)
+    setSelectedDate(d.toISOString().slice(0, 10))
+  }
+  const formatDateLabel = (dateStr) => {
+    const d = new Date(dateStr + 'T12:00:00')
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const isToday = dateStr === todayStr
+    const dayNames = lang === 'fr' ? ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'] : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+    const monthNames = lang === 'fr' ? ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'] : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    return `${dayNames[d.getDay()]} ${d.getDate()} ${monthNames[d.getMonth()]}${isToday ? (lang==='fr'?' (auj.)':' (today)') : ''}`
+  }
 
   // ─── Truck CRUD ───
   const handleUpdateTruck = async (id, fields) => {
@@ -266,7 +281,7 @@ export default function AppInner() {
     })
 
     return () => { if (refreshInterval) clearInterval(refreshInterval) }
-  }, [])
+  }, [selectedDate])
 
   const saveDepot = v => { setDepot(v); localStorage.setItem(DEPOT_KEY, v) }
   const saveTrucks = v => { setNumTrucks(v); localStorage.setItem(TRUCKS_KEY, v) }
@@ -494,7 +509,7 @@ export default function AppInner() {
       const todoIds = allJobs.filter(j => j.status === 'todo').map(j => j.id)
 
       formData.append('config', JSON.stringify({
-        depotAddress:depot, numTrucks, numDays, startTime, endTime,
+        depotAddress:depot, numTrucks: trucks.filter(t => t.status !== 'maintenance').length || numTrucks, numDays, startTime, endTime,
         sessionDate:new Date().toISOString().slice(0,10),
         selectedIds:todoIds.length > 0 ? todoIds : null,
         truckCapacity:Object.keys(truckCapacity).length > 0 ? truckCapacity : null,
@@ -628,49 +643,62 @@ export default function AppInner() {
           </div>
         )}
 
-        {/* ─── Top bar ─── */}
-        <div style={{background:'var(--white)',borderBottom:'1px solid var(--border)',padding:'10px 20px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-          <div style={{display:'flex',alignItems:'center',gap:7,marginRight:4}}>
-            <span style={{fontSize:14,fontWeight:700}}><span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span></span>
+        {/* ─── Top bar — compact ─── */}
+        <div style={{background:'var(--white)',borderBottom:'1px solid var(--border)',padding:'8px 16px',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+          {/* Logo + lang */}
+          <span style={{fontSize:15,fontWeight:800,marginRight:2}}><span style={{color:'#1B7A6B'}}>Round</span><span style={{color:'#2ECC8F'}}>it</span></span>
+          <button onClick={() => setLang(l => l==='fr'?'en':'fr')} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,fontWeight:700,color:'var(--navy)',background:'var(--bg)',cursor:'pointer'}}>{lang==='fr'?'EN':'FR'}</button>
+
+          <div style={{width:1,height:20,background:'var(--border)'}}/>
+
+          {/* Date navigation */}
+          <div style={{display:'flex',alignItems:'center',gap:4}}>
+            <button onClick={() => navigateDate(-1)} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:12,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',fontWeight:600}}>←</button>
+            <span style={{fontSize:13,fontWeight:700,color:'var(--navy)',padding:'0 6px',minWidth:120,textAlign:'center'}}>📅 {formatDateLabel(selectedDate)}</span>
+            <button onClick={() => navigateDate(1)} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:12,color:'var(--navy)',background:'var(--bg)',cursor:'pointer',fontWeight:600}}>→</button>
           </div>
-          <button onClick={() => setLang(l => l==='fr'?'en':'fr')} style={{padding:'4px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,fontWeight:700,color:'var(--navy)',background:'var(--bg)',cursor:'pointer'}}>{lang==='fr'?'🇬🇧 EN':'🇫🇷 FR'}</button>
-          <div style={{width:1,height:22,background:'var(--border)'}}/>
+
+          <div style={{width:1,height:20,background:'var(--border)'}}/>
+
+          {/* Import CSV */}
           <UploadZone label={T.pickingCsv} files={pickingFiles} onFile={f => handleFileSelect(f,'picking')} inputRef={pickRef}/>
           <UploadZone label={T.deliveryCsv} files={deliveryFiles} onFile={f => handleFileSelect(f,'delivery')} inputRef={delRef}/>
-          {hasFiles && <button onClick={handleReset} style={{padding:'4px 8px',border:'1px solid #FECACA',borderRadius:6,fontSize:10,fontWeight:600,color:'var(--danger)',background:'#FEF2F2',cursor:'pointer'}}>{T.reset}</button>}
-          <div style={{width:1,height:22,background:'var(--border)'}}/>
-          <Param label={T.depot}><input value={depot} onChange={e => saveDepot(e.target.value)} placeholder={T.depotPlaceholder} style={{width:190,padding:'6px 10px',border:'1px solid var(--border)',borderRadius:7,fontSize:12,color:'var(--text)',outline:'none'}}/></Param>
-          <Param label={T.trucks}><Counter value={numTrucks} min={1} max={10} onChange={saveTrucks}/></Param>
-          <Param label={T.days}><Counter value={numDays} min={1} max={14} onChange={setNumDays}/></Param>
-          <Param label={T.start}><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={{padding:'6px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:12,outline:'none'}}/></Param>
-          <Param label={T.end}><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{padding:'6px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:12,outline:'none'}}/></Param>
-          <div style={{width:1,height:22,background:'var(--border)'}}/>
-          <Param label={T.maxParcels}><input value={maxParcels} onChange={e => setMaxParcels(e.target.value.replace(/[^0-9]/g,''))} placeholder="∞" style={{width:48,padding:'6px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:12,color:'var(--text)',outline:'none',textAlign:'center'}}/></Param>
-          <Param label={T.maxVolume}><input value={maxVolume} onChange={e => setMaxVolume(e.target.value.replace(/[^0-9.,]/g,'').replace(',','.'))} placeholder="∞" style={{width:48,padding:'6px 8px',border:'1px solid var(--border)',borderRadius:7,fontSize:12,color:'var(--text)',outline:'none',textAlign:'center'}}/></Param>
-          <button onClick={handleOptimize} disabled={loading||!hasFiles} style={{marginLeft:'auto',padding:'8px 18px',background:loading||!hasFiles?'var(--border)':'var(--navy)',color:loading||!hasFiles?'var(--muted)':'#fff',fontSize:13,fontWeight:600,border:'none',borderRadius:8,cursor:'pointer',whiteSpace:'nowrap'}}>
+          {hasFiles && <button onClick={handleReset} style={{padding:'3px 8px',border:'1px solid #FECACA',borderRadius:5,fontSize:9,fontWeight:600,color:'var(--danger)',background:'#FEF2F2',cursor:'pointer'}}>{T.reset}</button>}
+
+          <div style={{width:1,height:20,background:'var(--border)'}}/>
+
+          {/* Dépôt + horaires */}
+          <Param label="📍"><input value={depot} onChange={e => saveDepot(e.target.value)} placeholder={T.depotPlaceholder} style={{width:170,padding:'5px 8px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,color:'var(--text)',outline:'none'}}/></Param>
+          <Param label="🕐"><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={{padding:'5px 6px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,outline:'none',width:75}}/></Param>
+          <span style={{fontSize:10,color:'var(--muted)'}}>→</span>
+          <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{padding:'5px 6px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,outline:'none',width:75}}/>
+
+          {/* Optimize */}
+          <button onClick={handleOptimize} disabled={loading||!hasFiles} style={{marginLeft:'auto',padding:'7px 16px',background:loading||!hasFiles?'var(--border)':'var(--navy)',color:loading||!hasFiles?'var(--muted)':'#fff',fontSize:12,fontWeight:700,border:'none',borderRadius:7,cursor:'pointer',whiteSpace:'nowrap'}}>
             {loading ? T.optimizing : todoJobs.length > 0 ? T.optimizeSel.replace('{n}',todoJobs.length) : T.optimizeAll}
           </button>
-          <div style={{width:1,height:22,background:'var(--border)'}}/>
+
+          <div style={{width:1,height:20,background:'var(--border)'}}/>
+
+          {/* User + admin + validate */}
           {userProfile && (
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{display:'flex',alignItems:'center',gap:5}}>
               <span style={{fontSize:11,fontWeight:600,color:'var(--navy)'}}>{userProfile.full_name}</span>
-              <span style={{fontSize:9,padding:'2px 6px',borderRadius:4,background:isManager?'var(--blue-soft)':'var(--indigo-soft)',color:isManager?'var(--navy)':'var(--indigo)',fontWeight:700}}>
-                {isManager ? 'Manager' : 'Coord.'}
+              <span style={{fontSize:8,padding:'2px 5px',borderRadius:4,background:isManager?'var(--blue-soft)':'var(--indigo-soft)',color:isManager?'var(--navy)':'var(--indigo)',fontWeight:700}}>
+                {isManager ? 'Mgr' : 'Coord'}
               </span>
             </div>
           )}
           {isManager && (
-            <button onClick={() => setShowAdmin(!showAdmin)} style={{padding:'4px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,fontWeight:600,color:'var(--navy)',background:showAdmin?'var(--blue-soft)':'var(--bg)',cursor:'pointer'}}>
-              ⚙️ {lang==='fr'?'Admin':'Admin'}
-            </button>
+            <button onClick={() => setShowAdmin(!showAdmin)} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,fontWeight:600,color:'var(--navy)',background:showAdmin?'var(--blue-soft)':'var(--bg)',cursor:'pointer'}}>⚙️</button>
           )}
           {isManager && plan.length > 0 && (
             <button onClick={async () => { setRouteValidated(!routeValidated); await getClient().from('saved_routes').update({ validated: !routeValidated, validated_by: userId }).eq('session_date', today) }}
-              style={{padding:'4px 10px',border:'1px solid '+(routeValidated?'var(--success)':'var(--border)'),borderRadius:6,fontSize:11,fontWeight:600,color:routeValidated?'var(--success)':'var(--navy)',background:routeValidated?'var(--success-soft)':'var(--bg)',cursor:'pointer'}}>
-              {routeValidated ? '✅ Validé' : '☐ Valider'}
+              style={{padding:'3px 8px',border:'1px solid '+(routeValidated?'var(--success)':'var(--border)'),borderRadius:5,fontSize:10,fontWeight:600,color:routeValidated?'var(--success)':'var(--muted)',background:routeValidated?'var(--success-soft)':'var(--bg)',cursor:'pointer'}}>
+              {routeValidated ? '✅' : '☐'}
             </button>
           )}
-          <button onClick={handleLogout} style={{padding:'4px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:11,fontWeight:600,color:'var(--danger)',background:'var(--bg)',cursor:'pointer'}}>{T.logout}</button>
+          <button onClick={handleLogout} style={{padding:'3px 8px',border:'1px solid var(--border)',borderRadius:5,fontSize:10,fontWeight:600,color:'var(--danger)',background:'var(--bg)',cursor:'pointer'}}>{T.logout}</button>
         </div>
 
         {error && <div style={{background:'#FEF2F2',borderBottom:'1px solid #FECACA',padding:'8px 20px',fontSize:12,color:'var(--danger)'}}>⚠️ {error}</div>}
@@ -840,7 +868,7 @@ export default function AppInner() {
                 <div style={{flex:1,overflowY:'auto',padding:10,minHeight:0}}>
                   {plan.length === 0
                     ? <div style={{textAlign:'center',color:'var(--muted)',fontSize:12,marginTop:40}}>{T.launchOptim}</div>
-                    : plan.map((day,di) => <DayBlock key={day.day} day={day} dayIdx={di} colors={COLORS} onHover={setHighlightTruck} T={T} lang={lang}
+                    : plan.map((day,di) => <DayBlock key={day.day} day={day} dayIdx={di} colors={COLORS} onHover={setHighlightTruck} T={T} lang={lang} fleetTrucks={trucks}
                         onPlanDragStart={handlePlanDragStart} onPlanDragOver={handlePlanDragOver} onPlanDragLeave={handlePlanDragLeave} onPlanDrop={handlePlanDrop} planDragOver={planDragOver} onRemoveOrder={handleRemoveOrder}/>)
                   }
                 </div>
@@ -957,7 +985,20 @@ function JobItem({ job, lang, onStatus, onDragStart, onUpdateJob, onSelectForRou
 
 /* ─── Day block with drag & drop ─── */
 
-function DayBlock({ day, dayIdx, colors, onHover, T, lang, onPlanDragStart, onPlanDragOver, onPlanDragLeave, onPlanDrop, planDragOver, onRemoveOrder }) {
+function DayBlock({ day, dayIdx, colors, onHover, T, lang, onPlanDragStart, onPlanDragOver, onPlanDragLeave, onPlanDrop, planDragOver, onRemoveOrder, fleetTrucks }) {
+  const getTruckName = (truckId) => {
+    if (fleetTrucks && fleetTrucks.length > 0) {
+      const ft = fleetTrucks[truckId - 1] || fleetTrucks.find(t => t.id === truckId)
+      if (ft) return ft.name
+    }
+    return T.truck + ' ' + truckId
+  }
+  const getTruckCapacity = (truckId) => {
+    if (!fleetTrucks || fleetTrucks.length === 0) return null
+    const ft = fleetTrucks[truckId - 1] || fleetTrucks.find(t => t.id === truckId)
+    return ft ? { maxParcels: ft.max_parcels, maxVolumeM3: ft.max_volume_m3 } : null
+  }
+
   return (
     <div style={{marginBottom:14}}>
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:'var(--bg)',borderRadius:8,marginBottom:6}}>
@@ -966,19 +1007,41 @@ function DayBlock({ day, dayIdx, colors, onHover, T, lang, onPlanDragStart, onPl
       </div>
       {day.trucks.map((truck,ti) => {
         const isOver = planDragOver && planDragOver.dayIdx===dayIdx && planDragOver.truckIdx===ti
+        const truckName = getTruckName(truck.truckId)
+        const cap = getTruckCapacity(truck.truckId)
+        const parcelPct = cap?.maxParcels ? Math.min(100, Math.round((truck.totalParcels || 0) / cap.maxParcels * 100)) : null
+        const volPct = cap?.maxVolumeM3 ? Math.min(100, Math.round((truck.totalVolumeM3 || 0) / cap.maxVolumeM3 * 100)) : null
         return (
-          <div key={truck.truckId} style={{marginBottom:6,paddingLeft:4,borderRadius:8,border:isOver?'1.5px dashed var(--navy)':'1.5px dashed transparent',background:isOver?'var(--blue-soft)':'transparent',transition:'all 0.15s'}}
+          <div key={truck.truckId} style={{marginBottom:8,paddingLeft:4,borderRadius:10,border:isOver?'1.5px dashed var(--navy)':'1.5px dashed transparent',background:isOver?'var(--blue-soft)':'transparent',transition:'all 0.15s'}}
             onMouseEnter={()=>onHover(truck.truckId)} onMouseLeave={()=>onHover(null)}
             onDragOver={e => onPlanDragOver(e,dayIdx,ti)} onDragLeave={onPlanDragLeave} onDrop={e => onPlanDrop(e,dayIdx,ti)}>
-            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,flexWrap:'wrap',padding:'4px 4px 0'}}>
-              <div style={{width:7,height:7,borderRadius:'50%',background:colors[ti%colors.length]}}/>
-              <span style={{fontSize:11,fontWeight:600,color:'var(--navy)'}}>{T.truck} {truck.truckId}</span>
-              <span style={{fontSize:10,color:'var(--muted)',marginLeft:'auto'}}>{truck.totalDistance} {T.km} · {T.return} {truck.returnTime}</span>
+            {/* Truck header with name */}
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,padding:'6px 6px 0'}}>
+              <div style={{width:8,height:8,borderRadius:'50%',background:colors[ti%colors.length]}}/>
+              <span style={{fontSize:12,fontWeight:700,color:'var(--navy)'}}>{truckName}</span>
+              <span style={{fontSize:10,color:'var(--muted)',marginLeft:'auto'}}>{truck.totalDistance} {T.km} · 🏠 {truck.returnTime}</span>
             </div>
+            {/* Parcels, volume + capacity bars */}
             {(truck.totalParcels>0||truck.totalVolumeM3>0) && (
-              <div style={{display:'flex',gap:10,paddingLeft:14,marginBottom:4}}>
-                {truck.totalParcels>0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📦 {truck.totalParcels} {T.parcels}</span>}
-                {truck.totalVolumeM3>0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📐 {truck.totalVolumeM3} {T.volume}</span>}
+              <div style={{paddingLeft:20,paddingRight:6,marginBottom:4}}>
+                <div style={{display:'flex',gap:10,marginBottom:3}}>
+                  {truck.totalParcels>0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📦 {truck.totalParcels}{cap?.maxParcels ? '/'+cap.maxParcels : ''}</span>}
+                  {truck.totalVolumeM3>0 && <span style={{fontSize:9,color:'var(--muted)',fontWeight:500}}>📐 {truck.totalVolumeM3}{cap?.maxVolumeM3 ? '/'+cap.maxVolumeM3 : ''} m³</span>}
+                </div>
+                {(parcelPct != null || volPct != null) && (
+                  <div style={{display:'flex',gap:6}}>
+                    {parcelPct != null && (
+                      <div style={{flex:1,height:4,background:'#E2E8F0',borderRadius:2,overflow:'hidden'}}>
+                        <div style={{width:parcelPct+'%',height:'100%',borderRadius:2,background:parcelPct>90?'var(--danger)':parcelPct>70?'#D97706':'var(--success)',transition:'width 0.3s'}}/>
+                      </div>
+                    )}
+                    {volPct != null && (
+                      <div style={{flex:1,height:4,background:'#E2E8F0',borderRadius:2,overflow:'hidden'}}>
+                        <div style={{width:volPct+'%',height:'100%',borderRadius:2,background:volPct>90?'var(--danger)':volPct>70?'#D97706':'var(--success)',transition:'width 0.3s'}}/>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {truck.stops.map((stop,si) => {
